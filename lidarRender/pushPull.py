@@ -316,6 +316,7 @@ class PushPullGL():
 
     def setRenderTarget(self):
         glBindFramebuffer(GL_FRAMEBUFFER, self.fb0)
+        glDrawBuffer(GL_COLOR_ATTACHMENT0)
     def unsetRenderTarget(self):
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
 

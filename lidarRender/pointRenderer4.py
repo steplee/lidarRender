@@ -2,9 +2,12 @@ from .render import *
 from .simple_dset import SimpleGeoDataset, gdal
 import ctypes
 
-from .pushPull import *
+from .occlusionAwareEngine import OcclusionAwareEngine
 
 import pylas, os, numpy as np, torch, cv2, sys
+
+DEBUG_MODE = True
+DEBUG_MODE = False
 
 def process_pc_get_pts(las, dset, stride=1):
     pts0 = np.stack((las.x[::stride], las.y[::stride], las.z[::stride]),-1).astype(np.float32)
@@ -80,10 +83,11 @@ class PointRenderer(SingletonApp):
         self.velTrans = np.zeros(3, dtype=np.float32)
         self.accTrans = np.zeros(3, dtype=np.float32)
 
+        #self.md = np.array((.0,.1))
         self.md = np.array((.0,.0))
         self.angles = np.array((0,0,0),dtype=np.float32)
-        self.eye = np.array((-.1,-1.0,-.7),dtype=np.float32)
         self.eye = np.array((-0,-0.0,1),dtype=np.float32)
+        #self.eye = np.array((-0.5,-0.0,-.8),dtype=np.float32)
 
         self.R = np.eye(3,dtype=np.float32)
         self.t = np.copy(self.eye)
@@ -95,14 +99,15 @@ class PointRenderer(SingletonApp):
         self.npts = 0
         self.vertSize = 0
 
-        self.sky = np.random.randn(10000,3)
+        self.sky = np.random.randn(1000,3)
         self.sky = self.sky / np.linalg.norm(self.sky,axis=1)[:,np.newaxis]
         self.sky[...,2] = abs(self.sky[...,2])
         self.skyColors = np.clip(self.sky * (0,.2,.99), 0, 1)
 
 
     def do_init(self):
-        self.pp = PushPullGL(self.w,self.h)
+        meta = dict(w=self.w,h=self.h)
+        self.engine = OcclusionAwareEngine(meta)
 
     def setPts(self, pts, colors=None, normals=None):
         pts = np.concatenate((pts, self.sky), 0)
@@ -125,6 +130,7 @@ class PointRenderer(SingletonApp):
         self.vertSize = 6 * 4
 
     def renderPts(self, pts, colors):
+        glUseProgram(0)
         glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
         glEnableClientState(GL_VERTEX_ARRAY)
         glEnableClientState(GL_COLOR_ARRAY)
@@ -139,33 +145,52 @@ class PointRenderer(SingletonApp):
     def render(self):
         glViewport(0, 0, *self.wh)
         glMatrixMode(GL_PROJECTION)
-        n = .03
+        n = .02
         f = 4
         v = .5
         u = (v*self.wh[0]) / self.wh[1]
         glLoadIdentity()
         glFrustum(-u*n,u*n,-v*n,v*n,n,f)
 
-        #print(' - view:\n', self.view)
+        print(' - view:\n', self.view)
         glMatrixMode(GL_MODELVIEW)
         glLoadMatrixf(self.view.T.reshape(-1))
 
         glClearColor(0,0,0,0.)
+        glClearDepth(1.)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
         E = 1e-1
 
-        self.pp.setRenderTarget()
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
         glDepthRange(0,1.)
         if len(self.pts):
-            glPointSize(4)
-            glUseProgram(0)
+            glPointSize(1)
+
+            #self.pp.setRenderTarget()
+            #glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+            #self.renderPts(self.pts, self.colors)
+            self.engine.setRenderTarget()
+
+            #glBindFramebuffer(GL_FRAMEBUFFER,0)
+            #glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
             self.renderPts(self.pts, self.colors)
-            print(' - render')
-            #self.pp.unsetRenderTarget()
-            self.pp.forwardWithRender()
+            #self.drawTri()
+
+            self.engine.render()
+            self.engine.unsetRenderTarget()
+
+    def drawTri(self):
+        glUseProgram(0)
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+        glRotatef(90*np.sin(time.time()), 0,0,1)
+        glBegin(GL_TRIANGLES)
+        z = -1.2
+        glVertex3f(-.5,-.5,z)
+        glVertex3f(.5,-.5,z)
+        glVertex3f(.0,.75,z)
+        glEnd()
 
 
     def startFrame(self):
@@ -222,7 +247,7 @@ def main():
         with pylas.open(fname) as fp:
             las = fp.read()
 
-            stride = 2
+            stride = 1
             '''
             pts0 = np.stack((las.x[::stride], las.y[::stride], las.z[::stride]),-1).astype(np.float32)
             lo,hi = np.quantile(pts0, [.003,.997], 0)
@@ -249,4 +274,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
 
