@@ -8,7 +8,7 @@ from OpenGL.GL.shaders import compileProgram, compileShader
 import sys
 
 
-def makeShaders():
+def makeShaders(nlvls):
     vsrc = '''
     #version 440
     layout(location = 0) in vec3 i_pos;
@@ -30,11 +30,13 @@ def makeShaders():
     const float threeHalfs = 3./2.;
 
     void main() {
+        //vec2 uv = (3./2.) * v_uv;
         vec2 uv = v_uv;
         float x = uv.x * 2. - 1.;
         float y = uv.y * 2. - 1.;
 
-        float z = texture(depthMap, (2./3.) * v_uv).r * 2 - 1.;
+        //float z = texture(depthMap, (2./3.) * v_uv).r * 2 - 1.;
+        float z = texture(depthMap, (2./3.) * v_uv).r;
         xyz = (invProj *  vec4(x,y, z, 1));
 
         /*
@@ -56,7 +58,10 @@ def makeShaders():
         */
 
         xyz.xyz = xyz.xyz / xyz.w;
-        xyz.z *= -1;
+        //xyz.z *= -1;
+
+        // NOTE: Dividing by far plane here.
+        xyz.z *= -1 / 4.2;
         xyz.a = 1.0;
     }
     '''
@@ -95,14 +100,14 @@ def makeShaders():
         vec4 p21 = texture(texXYZ, uv1 + vec2(step,0.));
         vec4 p22 = texture(texXYZ, uv1 + vec2(step,step));
 
-        if (p11.z < p12.z && p11.z < p21.z && p11.z < p22.z)
-            xyz = p11;
-        else if (p12.z < p21.z && p12.z < p22.z)
-            xyz = p12;
-        else if (p21.z < p22.z)
-            xyz = p21;
-        else
-            xyz = p22;
+        if (p11.z < p12.z && p11.z < p21.z && p11.z < p22.z) xyz = p11;
+        else if (p12.z < p21.z && p12.z < p22.z) xyz = p12;
+        else if (p21.z < p22.z) xyz = p21;
+        else xyz = p22;
+        //if (p11.a > .6 && p11.z < p12.z && p11.z < p21.z && p11.z < p22.z) xyz = p11;
+        //else if (p12.a > .6 && p12.z < p21.z && p12.z < p22.z) xyz = p12;
+        //else if (p21.a > .6 && p21.z < p22.z) xyz = p21;
+        //else xyz = p22;
 
         //xyz.a = 1.;
         //xyz = vec4(lvl0/8.,lvl0/8.,lvl0/8.,1.);
@@ -129,16 +134,16 @@ def makeShaders():
         float voff0 = .25 * (1 - pow(.25,(lvl0)/2)) / (1.-.25);
         vec2 uv0 = (4./3.) * (P0 * v_uv + vec2(uoff0,voff0));
 
-        float s_hpr = 8;
+        float s_hpr = 4;
         float h_div_2tant = 1;
         //float z = (1. - texture(xyzLvl4, uv0).z / 4.2);
         float z = texture(xyzOdd, uv0).z;
 
-        //float lvl_ = (1-z) * 7.1;
+        //float lvl_ = (1-z) * (NLVL + .2);
         //float lvl_ = 1. / (7.1*z);
         float lvl_ = 1 * log(s_hpr * h_div_2tant * (1./z)) / log(2.);
 
-        lvl_ = clamp(lvl_, 0., 7.1);
+        lvl_ = clamp(lvl_, 0., (NLVL + .01));
         int lvl = int(lvl_);
 
         vec3 x;
@@ -202,17 +207,16 @@ def makeShaders():
         vec4 c0 = texture(inColor, (2./3.) * v_uv);
         outColor = c0;
         //outColor.a *= .9;
-        //outColor = vec4(lvl / 7., lvl / 7., lvl / 7., 1.);
-        //outColor = vec4(x,1.);
+        //outColor = vec4(lvl / float(NLVL), lvl / float(NLVL), lvl / float(NLVL), 1.);
 
         //outColor = vec4(1.-meanOcc,0.,meanOcc,1.);
-        //outColor = vec4((1-meanOcc), .8*pow(1.-meanOcc,2.5),meanOcc,1.);
 
-        if (meanOcc < 0.1) outColor.a = 0;
-        if (meanOcc < 0.1 && c0.a > 0) outColor = vec4(1.,0,0,1.);
-        //if (meanOcc > 0.1) outColor.a = 0;
+        //const float meanOccThresh = .1 + .1 * log(.1 + 1./z);
+        const float meanOccThresh = .1 + .2 * log(1./(.4+z));
+        if (meanOcc < meanOccThresh) outColor.a = 0;
+        if (meanOcc < meanOccThresh && c0.a > 0) outColor = vec4(1.,0,0,1.); // Render discard points in red.
     }
-    '''
+    '''.replace('NLVL', str(nlvls))
 
     simpleTextured = '''
     #version 440
@@ -244,7 +248,7 @@ def makeShaders():
     simpleTextured = compileProgram(vs,simpleTextured)
     return locals()
 
-def makeShaders_pull_push(vs):
+def makeShaders_pull_push(vs, nlvls):
     # Inefficient version: not making use of hardware bilinear sampling.
     h1 = np.array((
         1/64, 3/64,3/64, 1/64,
@@ -343,7 +347,7 @@ def makeShaders_pull_push(vs):
         float voff = .25 * (1 - pow(.25,(lvl1)/2)) / (1.-.25);
         vec2 uv = (4./3.) * (P * v_uv + vec2(uoff,voff));
 
-        float step = (4./3.) / (W);
+        float step = (2./3.) / (W);
     ''' + conv_down(1, 'color', h1, 'step') + '''
     }'''
     pull = '''
@@ -367,7 +371,7 @@ def makeShaders_pull_push(vs):
 
         vec2 uv = (4./3.) * (P0 * v_uv + vec2(uoff0,voff0));
         vec2 uv2 = (4./3.) * (P1 * v_uv + vec2(uoff1,voff1));
-        float step = (4./3.) / W;
+        float step = (2./3.) / W;
 
     ''' +conv_up(1, 'color', h2, 'step') + '''
     }
@@ -386,9 +390,11 @@ def makeShaders_pull_push(vs):
 class OcclusionAwareEngine:
     def __init__(self, meta):
         assert('w' in meta)
+        meta.setdefault('occlusionLvls', 8)
+        meta.setdefault('pullPushLvls', 8)
         for k,v in meta.items(): setattr(self,k,v)
-        for k,v in makeShaders().items(): setattr(self,k,v)
-        for k,v in makeShaders_pull_push(self.vs).items(): setattr(self,k,v)
+        for k,v in makeShaders(self.occlusionLvls).items(): setattr(self,k,v)
+        for k,v in makeShaders_pull_push(self.vs, self.pullPushLvls).items(): setattr(self,k,v)
 
         # Create Textures and FBOs
         self.sceneTexture, self.occlusionTexs = glGenTextures(1), glGenTextures(2)
@@ -410,10 +416,10 @@ class OcclusionAwareEngine:
             glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, self.pyrW, self.pyrH)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT)
         glBindTexture(GL_TEXTURE_2D, 0)
 
-        self.occlusionLvls = 8
-        self.pullPushLvls = 8
 
         self.fb0 = glGenFramebuffers(1)
         glBindFramebuffer(GL_FRAMEBUFFER, self.fb0)
@@ -498,10 +504,10 @@ class OcclusionAwareEngine:
             glUniform1i(3, i)
 
             glBindTexture(GL_TEXTURE_2D, self.occlusionTexs[1 - (i%2)])
-            #glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
-            #glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+            #glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+            #glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
             glDrawBuffer(GL_COLOR_ATTACHMENT1+(i%2))
 
             print(' - PyrDown:', i, xoff,yoff,ww,hh)
@@ -620,9 +626,9 @@ class OcclusionAwareEngine:
         #y_ = y[...,2]; y_ = (y_ - y_.min()); y_ = y_ / y_.max()
         #y_[...,2] = (y_[...,2] - y_[...,2].min()); y_[...,2] = y_[...,2] / y_[...,2].max()
         #print(y_)
-        print(y_, y_.reshape(-1,3).min(0), y_.reshape(-1,3).max(0))
+        #print(y_, y_.reshape(-1,3).min(0), y_.reshape(-1,3).max(0))
 
-        y_ = cv2.pyrDown(y_)
+        #y_ = cv2.pyrDown(y_)
         #y_ = cv2.pyrDown(y_)
         #y_ = y_[::-1]
 
