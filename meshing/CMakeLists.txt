@@ -21,6 +21,7 @@ include_directories(
 
 add_library(meshing
   src/recon/dt.cc
+  src/recon/mfmc.cc
   src/las/las_tiling.cc
   src/las/read_las.cc
   src/geodset.cc
