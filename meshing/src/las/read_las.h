@@ -43,7 +43,7 @@ Eigen::Vector4f getLasTlbr(const std::string &fname);
 
 // Note: This function returns floating point numbers with origin as TOP-LEFT.
 // Single precision floats ARE NOT SUFFICIENT for UTM values. The values are too large.
-void read_las_aoi(const std::string& fname, const Eigen::Vector4d& aoiTlbr, std::vector<LasPoint>& out);
+void read_las_aoi(const std::string& fname, const Eigen::Vector4d& aoiTlbr, std::vector<LasPoint>& out, int stride=1);
 std::vector<std::string> find_las_in_box(const Eigen::Vector4f& webMercatorTlbr);
 
 struct LasTile {
@@ -58,7 +58,7 @@ struct LasTile {
   int32_t baseLvl;
 
   std::vector<Eigen::Vector3f> pts;
-  void load();
+  void load(int stride=1);
 };
 
 
