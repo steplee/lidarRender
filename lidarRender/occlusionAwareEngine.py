@@ -134,7 +134,7 @@ def makeShaders(nlvls):
         float voff0 = .25 * (1 - pow(.25,(lvl0)/2)) / (1.-.25);
         vec2 uv0 = (4./3.) * (P0 * v_uv + vec2(uoff0,voff0));
 
-        float s_hpr = 4;
+        float s_hpr = 4*4;
         float h_div_2tant = 1;
         //float z = (1. - texture(xyzLvl4, uv0).z / 4.2);
         float z = texture(xyzOdd, uv0).z;
@@ -190,9 +190,11 @@ def makeShaders(nlvls):
                         //vec2 uv2 = uv1 + vec2(dx * step + off, dy * step + off);
                         vec2 uv2 = uv1 + vec2(dx * step, dy * step);
 
+                        //if (uv2.x < (4./3.)*uoff1 || uv2.y < (4./3.)*voff1) continue;
+
                         vec3 y;
                         if (lvl1 % 2 == 0) y = texture(xyzEven, uv2).xyz;
-                        else              y = texture(xyzOdd, uv2).xyz;
+                        else               y = texture(xyzOdd, uv2).xyz;
 
                         float occ = 1. - dot(normalize(y-x), normalize(-y));
                         if (occ < sectors[ii]) sectors[ii] = occ;
@@ -212,9 +214,10 @@ def makeShaders(nlvls):
         //outColor = vec4(1.-meanOcc,0.,meanOcc,1.);
 
         //const float meanOccThresh = .1 + .1 * log(.1 + 1./z);
-        const float meanOccThresh = .1 + .2 * log(1./(.4+z));
+        //const float meanOccThresh = .1 + .2 * log(1./(.4+z));
+        const float meanOccThresh = .12;
         if (meanOcc < meanOccThresh) outColor.a = 0;
-        if (meanOcc < meanOccThresh && c0.a > 0) outColor = vec4(1.,0,0,1.); // Render discard points in red.
+        //if (meanOcc < meanOccThresh && c0.a > 0) outColor = vec4(1.,0,0,1.); // Render discard points in red.
     }
     '''.replace('NLVL', str(nlvls))
 
