@@ -22,7 +22,7 @@ void DelaunayTetrahedrialization::run(RowMatrixCRef pts_) {
   if (not opts.createMesh) return;
   std::cout << " - DelaunayTetrahedrialization::run making mesh." << std::endl;
 
-#if 0
+#if 1
 
   //for (auto it = T.finite_facets_begin(), end = T.finite_facets_end(); it != end; ++it) { }
   int ii = 0;
@@ -57,7 +57,7 @@ void DelaunayTetrahedrialization::run(RowMatrixCRef pts_) {
   mesh.verts = pts;
   mesh.mode = GL_TRIANGLES;
 
-  RowMatrix colors(pts.rows(), 4);
+  RowMatrixXf colors(pts.rows(), 4);
   for (int i=0; i<pts.rows(); i++) {
     Vector3 cc = Vector3::Random();
     colors.row(i).leftCols(3) = cc.normalized();

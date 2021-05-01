@@ -105,10 +105,10 @@ void MultiLasDataset::split() {
   }
 }
 
-void LasTile::load() {
+void LasTile::load(int stride) {
   std::cout << " - Loading tile " << x << " " << y << " (tlbr " << tlbr.transpose() << ")\n";
   for (const std::string& fn : srcDsets) {
-    read_las_aoi(fn, tlbr, pts);
+    read_las_aoi(fn, tlbr, pts, stride);
   }
   std::cout << " - Loading tile " << x << " " << y << " ... " << pts.size() << " pts.\n";
   for (int i=0; i<pts.size(); i+=pts.size() / 10) {

@@ -24,6 +24,7 @@ using Vector4 = Eigen::Matrix<scalar,4,1>;
 using Vector2 = Eigen::Matrix<scalar,2,1>;
 using VectorX = Eigen::Matrix<scalar,-1,1>;
 using RowMatrixX = Eigen::Matrix<scalar,-1,-1, Eigen::RowMajor>;
+using RowMatrixXf = Eigen::Matrix<float,-1,-1, Eigen::RowMajor>;
 using RowMatrixi = Eigen::Matrix<int32_t,-1,-1, Eigen::RowMajor>;
 using RowMatrixRef = Eigen::Ref<Eigen::Matrix<scalar,-1,-1, Eigen::RowMajor>>;
 using RowMatrixiRef = Eigen::Ref<Eigen::Matrix<int32_t,-1,-1, Eigen::RowMajor>>;

@@ -205,7 +205,7 @@ std::vector<LasPoint> read_las(const std::string& fname) {
 }
 #endif
 
-void read_las_aoi(const std::string& fname, const Eigen::Vector4d& aoiTlbr, std::vector<LasPoint>& out) {
+void read_las_aoi(const std::string& fname, const Eigen::Vector4d& aoiTlbr, std::vector<LasPoint>& out, int stride) {
 
   double start_time = 0.0;
   start_time = taketime();
@@ -266,7 +266,7 @@ void read_las_aoi(const std::string& fname, const Eigen::Vector4d& aoiTlbr, std:
     // how many points does the file have
     laszip_I64 npoints = (header->number_of_point_records ? header->number_of_point_records : header->extended_number_of_point_records);
 
-    out.reserve(out.size() + npoints);
+    out.reserve(out.size() + (npoints+stride-1)/stride);
 
     // report how many points the file has
     //fprintf(stderr,"file '%s' contains %I64d points\n", fname.c_str(), npoints);
@@ -314,7 +314,8 @@ void read_las_aoi(const std::string& fname, const Eigen::Vector4d& aoiTlbr, std:
         //printf(" - pt %lf %lf -> %f %f (offset %lf %lf) (scale %lf %lf)\n",
             //xx,yy, x,y, aoiTlbr(0), aoiTlbr(1), scaleFactorX, scaleFactorY);
 
-      out.push_back(LasPoint{x,y,z});
+      if (p_count % stride == 0)
+        out.push_back(LasPoint{x,y,z});
 
 
       p_count++;

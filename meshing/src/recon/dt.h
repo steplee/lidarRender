@@ -2,6 +2,7 @@
 
 #include "common.h"
 //#include "mesh.h"
+#include "viz/indexed_mesh.h"
 
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Triangulation_3.h>
@@ -30,9 +31,9 @@ struct DelaunayTetrahedrialization {
   DTOpts opts;
 
   void run(RowMatrixCRef pts);
-  RowMatrixX pts;
+  RowMatrixXf pts;
 
   Delaunay T;
-  //IndexedMesh mesh;
+  IndexedMesh mesh;
 };
 
