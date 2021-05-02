@@ -3,7 +3,7 @@
 using namespace torch;
 using namespace torch::indexing;
 
-int log2(int x) {
+static int log2(int x) {
   int i = 0;
   while (x>>=1) i++;
   return i;
@@ -28,15 +28,12 @@ static __global__ void fillLvl(
   float myZ = ((float)lvl) * factor;
   float mySurfaceZ = surface[y*G+x];
 
-  // nope
-  if (myZ > mySurfaceZ) return;
-
   int8_t dirMask = 0;
 
-  float myNextZ = ((float)(lvl+1)) * factor;
-  if (myNextZ > mySurfaceZ) {
-    dirMask = PLUS_Z;
-  }
+  float myLastZ = ((float)(lvl-1)) * factor;
+  // nope
+  if (myLastZ > mySurfaceZ) return;
+  if (myZ > mySurfaceZ) dirMask = PLUS_Z;
 
   for (int dd=0; dd<4; dd++) {
     //int dx = (dd<2) * (dd%2?1:-1);
@@ -59,9 +56,6 @@ static __global__ void fillLvl(
 
   if (dirMask) {
     int i = y*G+x;
-    //inds[0*G*G + i] = x;
-    //inds[1*G*G + i] = y;
-    //inds[2*G*G + i] = lvl;
     inds[i*4+0] = x;
     inds[i*4+1] = y;
     inds[i*4+2] = lvl;
@@ -114,17 +108,22 @@ std::vector<torch::Tensor> makeGeo(
     int G) {
   torch::Tensor nodes = nodes_.cpu();
   int N = nodes.size(0);
+  int64_t* nodePtr = nodes.data_ptr<int64_t>();
 
   float Gf = G;
 
-
   // Create one quad or two tris per node.
+  bool needTris = true;
+  bool needQuads = false;
 
   std::unordered_map<int64_t, int32_t> seen;
   std::vector<float> verts;
   std::vector<int32_t> quads;
   std::vector<int32_t> tris;
-  int64_t* nodePtr = nodes.data_ptr<int64_t>();
+
+  // Most likely need much more, but a good start
+  if (needTris) tris.reserve(N * 6);
+  if (needQuads) quads.reserve(N * 4);
 
   for (int i=0; i<N; i++) {
     int64_t x = nodePtr[i*4+0];
@@ -134,15 +133,15 @@ std::vector<torch::Tensor> makeGeo(
 
     int xyzss[6*4*3] = {
       // Z+
-      x     , y   , z+0 ,
-      x+1   , y   , z+0 ,
-      x+1   , y+1 , z+0 ,
-      x     , y+1 , z+0 ,
-      // Z-
       x     , y   , z+1 ,
       x+1   , y   , z+1 ,
       x+1   , y+1 , z+1 ,
       x     , y+1 , z+1 ,
+      // Z-
+      x     , y   , z+0 ,
+      x+1   , y   , z+0 ,
+      x+1   , y+1 , z+0 ,
+      x     , y+1 , z+0 ,
       // X+
       x+1   , y   , z   ,
       x+1   , y+1 , z   ,
@@ -164,10 +163,12 @@ std::vector<torch::Tensor> makeGeo(
       x+1   , y   , z+1 ,
       x     , y   , z+1
     };
-    int flip[6] = {0,0, 1,1, 0,0};
+
+    // For the X/Y facing faces, the correct order must be used when GL_CULL_FACE is enabled
+    int flip[6] = {0,1, 0,1, 1,0};
 
     for (int k=0; k<6; k++) {
-      if (k & u) {
+      if ((1<<k) & u) {
     //if (u & PLUS_Z) {
       //int* xyzs = xyzss + 0*12;
       int* xyzs = xyzss + k*12;
@@ -190,27 +191,38 @@ std::vector<torch::Tensor> makeGeo(
           inds[j] = seen[signature];
       }
 
-      quads.push_back(inds[0]); quads.push_back(inds[1]);
-      quads.push_back(inds[2]); quads.push_back(inds[3]);
-      if (flip[k] == 0) {
-        tris.push_back(inds[0]); tris.push_back(inds[1]); tris.push_back(inds[2]);
-        tris.push_back(inds[2]); tris.push_back(inds[3]); tris.push_back(inds[0]);
-      } else {
-        tris.push_back(inds[1]); tris.push_back(inds[0]); tris.push_back(inds[2]);
-        tris.push_back(inds[3]); tris.push_back(inds[2]); tris.push_back(inds[0]);
+      if (needQuads) {
+        quads.push_back(inds[0]); quads.push_back(inds[1]);
+        quads.push_back(inds[2]); quads.push_back(inds[3]);
       }
-    }
+      if (needTris) {
+        if (flip[k] == 0) {
+          tris.push_back(inds[0]); tris.push_back(inds[1]); tris.push_back(inds[2]);
+          tris.push_back(inds[2]); tris.push_back(inds[3]); tris.push_back(inds[0]);
+        } else {
+          tris.push_back(inds[1]); tris.push_back(inds[0]); tris.push_back(inds[2]);
+          tris.push_back(inds[3]); tris.push_back(inds[2]); tris.push_back(inds[0]);
+        }
+      }
+      }
       }
 
-  }
+    }
 
   torch::Tensor outVerts, outTris, outQuads;
-  outVerts = torch::empty({(int)verts.size()/3,3}, TensorOptions().dtype(kFloat));
-  outTris = torch::empty({(int)tris.size()}, TensorOptions().dtype(kInt32));
-  //outQuads = torch::empty({quads.size()}, TensorOptions().dtype(kInt32));
 
+  outVerts = torch::empty({(int)verts.size()/3,3}, TensorOptions().dtype(kFloat));
   memcpy(outVerts.data_ptr<float>(), verts.data(), sizeof(float)*verts.size());
-  memcpy(outTris.data_ptr<int32_t>(), tris.data(), sizeof(int32_t)*tris.size());
+
+  if (needTris) {
+    outTris = torch::empty({(int)tris.size()}, TensorOptions().dtype(kInt32));
+    memcpy(outTris.data_ptr<int32_t>(), tris.data(), sizeof(int32_t)*tris.size());
+  }
+  if (needQuads) {
+    outQuads = torch::empty({(int)quads.size()}, TensorOptions().dtype(kInt32));
+    memcpy(outQuads.data_ptr<int32_t>(), quads.data(), sizeof(int32_t)*quads.size());
+  }
+
 
   std::vector<torch::Tensor> out;
   out.push_back(outVerts);

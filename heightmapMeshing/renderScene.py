@@ -7,9 +7,17 @@ from .occlusionAwareEngine import OcclusionAwareEngine
 import pylas, os, numpy as np, torch, cv2, sys
 from matplotlib.cm import inferno
 
+import torch
 import torch.utils.cpp_extension
 print(' - Compiling voxelize.cu')
-voxelize = torch.utils.cpp_extension.load(name='voxelize',sources=['heightmapMeshing/voxelize.cu'])
+voxelize = torch.utils.cpp_extension.load(
+        name='voxelize',
+        sources=[
+            'heightmapMeshing/csrc/voxelize.cu'
+            ],
+        extra_cflags=['-D_GLIBCXX_USE_CXX11_ABI=0'],
+        extra_cuda_cflags=['-D_GLIBCXX_USE_CXX11_ABI=0']
+        )
 
 DEBUG_MODE = True
 DEBUG_MODE = False
@@ -95,6 +103,7 @@ class PointRenderer(SingletonApp):
         self.angles = np.array((0,0,0),dtype=np.float32)
         self.eye = np.array((-0,-0.0,1),dtype=np.float32)
         self.eye = np.array((-0,-0.0,0),dtype=np.float32)
+        self.eye = np.array((.5,.50,.5),dtype=np.float32)
         #self.eye = np.array((-0.5,-0.0,-.8),dtype=np.float32)
 
         self.R = np.eye(3,dtype=np.float32)
@@ -134,7 +143,8 @@ class PointRenderer(SingletonApp):
         self.vertSize = arr.shape[1]*4
         self.ninds = tris.size
     def renderTris(self):
-        glDisable(GL_CULL_FACE)
+        self.drawAxes()
+        glEnable(GL_CULL_FACE)
         print(' - Rendering', self.ninds, 'inds')
         glUseProgram(0)
         glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
@@ -179,6 +189,7 @@ class PointRenderer(SingletonApp):
         self.sz = (self.hi-self.lo)[:2].max()
 
     def renderPts(self, pts, colors):
+        #self.drawAxes()
         glUseProgram(0)
         glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
         glEnableClientState(GL_VERTEX_ARRAY)
@@ -259,7 +270,7 @@ class PointRenderer(SingletonApp):
                 self.engine.unsetRenderTarget()
 
                 #elev.mul_(.9)
-                elev[elev>.2] = .1
+                elev[elev>.3] = .1
                 elev = elev.contiguous()
                 vv = voxelize.forward(elev, 1000)
                 print(elev.shape)
@@ -280,16 +291,17 @@ class PointRenderer(SingletonApp):
                     print(' newPts max', newPts.max(0))
                     print(' newPts min', newPts.min(0))
                     self.setPts(newPts,newColors)
-
-                verts,tris,quads = voxelize.makeGeo(vv, data.shape[0])
-                verts = verts.cpu().numpy().reshape(-1,3)
-                colors = np.ones_like(verts)
-                colors[:,:3] = inferno(verts[:,2:3] / verts[:,2:3].max())[...,0,:3]
-                tris = tris.cpu().numpy()
-                print(verts.shape,colors.shape,tris.shape, tris.max())
-                print('max vert', verts.max(0))
-                print('min vert', verts.min(0))
-                self.setTris(verts,colors,tris)
+                else:
+                    print(' - Making geo')
+                    verts,tris,quads = voxelize.makeGeo(vv, data.shape[0])
+                    verts = verts.cpu().numpy().reshape(-1,3)
+                    colors = np.ones_like(verts)
+                    colors[:,:3] = inferno(verts[:,2:3] / verts[:,2:3].max())[...,0,:3]
+                    tris = tris.cpu().numpy()
+                    print(verts.shape,colors.shape,tris.shape, tris.max())
+                    print('max vert', verts.max(0))
+                    print('min vert', verts.min(0))
+                    self.setTris(verts,colors,tris)
 
             self.DO_PROCESS = False
 
@@ -305,6 +317,17 @@ class PointRenderer(SingletonApp):
         glVertex3f(.5,-.5,z)
         glVertex3f(.0,.75,z)
         glEnd()
+    def drawAxes(self):
+        glUseProgram(0)
+        glBegin(GL_LINES)
+        s = 1
+        zoff = 0
+        glColor4f(1,0,0,.65); glVertex3f(0,0,zoff); glVertex3f(s,0,zoff);
+        glColor4f(0,1,0,.65); glVertex3f(0,0,zoff); glVertex3f(0,s,zoff);
+        glColor4f(0,0,1,.65); glVertex3f(0,0,zoff); glVertex3f(0,0,s+zoff);
+        glEnd()
+        glColor4f(1,1,1,1)
+
 
 
     def startFrame(self):
@@ -338,20 +361,22 @@ class PointRenderer(SingletonApp):
         super().keyboard(key,x,y)
         key = (key).decode()
         if key == 'q': self.q_pressed = True
-        if key == 'w': self.accTrans[2] = -1 / 10
-        if key == 's': self.accTrans[2] = 1 / 10
+        if key == 'w': self.accTrans[2] = -1
+        if key == 's': self.accTrans[2] = 1
         if key == 'j': self.accTrans[1] = -1
         if key == 'k': self.accTrans[1] = 1
         if key == 'a': self.accTrans[0] = -1
         if key == 'd': self.accTrans[0] = 1
+        self.accTrans /= 8
 
     def motion(self, x, y):
         super().motion(x,y)
 
 
 
-def main():
-    dset = SimpleGeoDataset('/data/pointCloudStuff/img/DC/2013.utm.tif')
+def main_lidar():
+    #dset = SimpleGeoDataset('/data/pointCloudStuff/img/DC/2013.utm.tif')
+    dset = SimpleGeoDataset('/data/dc_tiffs/dc.tif')
 
     dir_ = '/data/pointCloudStuff/pc/dc'
     ext = '.las'
@@ -380,7 +405,9 @@ def main():
             app.pts = pts1
             app.colors = (pts0 - lo) / (hi - lo)
             '''
+
             pts, colors, img = process_pc_get_pts(las, dset, stride)
+
             #app.pts,app.colors = pts,colors
             app.setPts(pts,colors,None)
 
@@ -393,9 +420,47 @@ def main():
                 #if app.endFrame(): break
             app.q_pressed = False
 
+def main_synth():
+    n = 1536
+    n = 2000
+    pts = np.stack(np.meshgrid(
+        np.linspace(-1,1,n),
+        np.linspace(-1,1,n),
+        [-1]), -1).reshape(-1,3)
+
+    pts = pts.astype(np.float32)
+    pts[...,2] = np.random.randn(n*n) * .0001 - .9
+
+    pts[
+        (pts[:,1]+pts[:,0] > -.5) &
+        (pts[:,1]+pts[:,0] <  .5) &
+        (pts[:,1]-2*pts[:,0] > -.5) &
+        (2*pts[:,1]-pts[:,0] <  .5) ,2 ] = -.6
+    pts[
+        (pts[:,1]+pts[:,0] > -.3) &
+        (pts[:,1]+pts[:,0] <  .3) &
+        (pts[:,1]-pts[:,0] > -.3) &
+        (pts[:,1]-pts[:,0] <  .3) ,2 ] = -.4
+    print('PTS\n',pts)
+
+    lo = pts[:,2].min()
+    hi = pts[:,2].max()
+    print(lo,hi)
+    colors = inferno(1e-1 + (pts[:,2] - lo) / (1e-6+hi - lo))[...,:3]
+
+    app = PointRenderer(1024,1024)
+    app.init(True)
+    app.setPts(pts,colors,None)
+    while not app.q_pressed:
+        app.startFrame()
+        app.render()
+        app.endFrame()
+        #if app.endFrame(): break
+    app.q_pressed = False
 
 if __name__ == '__main__':
-    main()
+    #main_lidar()
+    main_synth()
 
 
 
