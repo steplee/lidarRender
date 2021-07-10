@@ -44,21 +44,22 @@ def makeShaders(nlvls):
         xyz = (invProjT *  vec4(x,y, z, 1));
 
         /*
-        //float z = texture(depthMap, v_uv).r;
-        //float z = (texture(depthMap, v_uv).r + 1.) * .5;
-        float z0 = texture(depthMap, v_uv).r;
-        float z = (z0 * 2.) - 1.;
+            //float z = texture(depthMap, v_uv).r;
+            //float z = (texture(depthMap, v_uv).r + 1.) * .5;
+            float z0 = texture(depthMap, v_uv).r;
+            //float z = (z0 * 2.) - 1.;
+            float z = z0;
 
-        //xyz = (invProj * vec4(x,y, 1., -z));
-        //xyz = (invProj * z * vec4(x,y, 1., -1.));
+            //xyz = (invProj * vec4(x,y, 1., -z));
+            //xyz = (invProj * z * vec4(x,y, 1., -1.));
 
-        //xyz = (invProj *  vec4(x,y, z, 1));
+            //xyz = (invProj *  vec4(x,y, z, 1));
 
-        float far = 4.;
-        float near = .02;
-        float zz = (2*far*near/(far-near)) / (z0 * -2. + 1. + (far+near) / (far-near));
-        zz = (zz - near) / (far - near);
-        xyz = vec4(x*invProj[0][0], y*invProj[1][1], -zz, 1.);
+            float far = 4.;
+            float near = .02;
+            float zz = (2*far*near/(far-near)) / (z0 * -2. + 1. + (far+near) / (far-near));
+            zz = (zz - near) / (far - near);
+            xyz = vec4(x*invProj[0][0], y*invProj[1][1], -zz, 1.);
         */
 
         xyz.xyz = xyz.xyz / xyz.w;
@@ -68,6 +69,7 @@ def makeShaders(nlvls):
 
         xyz.z *= -1; // NOTE: Assumes far plane is 1
         //xyz.z = 1. - (2. / (1.+xyz.z) - 1.);
+        //xyz.z *= 1. - .88;
 
         xyz.a = 1.0;
     }
@@ -244,9 +246,10 @@ def makeShaders(nlvls):
         // We want for at least one direction NOT to hit an obstruction.
 
         float myZ = texture(xyzEven, v_uv * (2./3.)).z;
-        float T = .007;
+        //float T = .00001;
+        float T = .001;
         float S = 1;
-        int M = 4;
+        int M = 8;
         float sign = -1;
 
         float meanOcc = 4;
@@ -555,7 +558,8 @@ class OcclusionAwareEngine:
         glEnable(GL_TEXTURE_2D)
         glBindFramebuffer(GL_FRAMEBUFFER,self.fb0)
 
-        proj = glGetFloatv(GL_PROJECTION_MATRIX).T
+        proj = glGetFloatv(GL_PROJECTION_MATRIX)
+        print('proj',proj)
 
         self.forward(proj, renderToScreen=renderToScreen)
 
@@ -578,7 +582,8 @@ class OcclusionAwareEngine:
         glViewport(0,0,self.w,self.h)
         glUseProgram(self.unproject)
         inv_proj = np.copy(np.linalg.inv(proj).astype(np.float32), 'C')
-        glUniformMatrix4fv(4, 1, True, inv_proj)
+        glUniformMatrix4fv(4, 1, False, inv_proj)
+        #glUniformMatrix4fv(4, 1, True, inv_proj)
         glActiveTexture(GL_TEXTURE0)
         glBindTexture(GL_TEXTURE_2D, self.sceneDepthTex)
         glDrawBuffer(GL_COLOR_ATTACHMENT1)
@@ -687,6 +692,10 @@ class OcclusionAwareEngine:
             else:
                 glDrawBuffer(GL_COLOR_ATTACHMENT1+(i%2))
                 glReadBuffer(GL_COLOR_ATTACHMENT1+(i%2))
+            '''
+            glDrawBuffer(GL_COLOR_ATTACHMENT1+(i%2))
+            glReadBuffer(GL_COLOR_ATTACHMENT1+(i%2))
+            '''
 
             ww,hh = ww*2, hh*2
             if i % 2 == 0: xoff -= ww
@@ -699,6 +708,21 @@ class OcclusionAwareEngine:
         #self.show('pulled[0]', self.occlusionTexs[0], time=1)
         #self.show('pulled[1]', self.occlusionTexs[1], time=1)
 
+        '''
+        if renderToScreen:
+            glUseProgram(self.simpleTextured)
+            glActiveTexture(GL_TEXTURE0)
+            #glBindTexture(GL_TEXTURE_2D, self.sceneDepthTex)
+            #glBindTexture(GL_TEXTURE_2D, self.pullPushTexs[0])
+            glBindTexture(GL_TEXTURE_2D, self.occlusionTexs[0])
+            glBindFramebuffer(GL_FRAMEBUFFER, 0)
+            glViewport(0,0,self.w,self.h)
+            glClearColor(1,0,1,1)
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+            self.fullScreenQuad()
+        '''
+
+        glUseProgram(0)
         '''
         if renderToScreen:
             #glUseProgram(self.simpleTextured)

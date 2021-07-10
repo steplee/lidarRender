@@ -235,7 +235,7 @@ class PointRenderer(SingletonApp):
 def main():
     dset = SimpleGeoDataset('/data/pointCloudStuff/img/DC/2013.utm.tif')
 
-    dir_ = '/data/pointCloudStuff'
+    dir_ = '/data/pointCloudStuff/pc/dc/'
     ext = '.las'
 
     app = PointRenderer(1024,1024)

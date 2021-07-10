@@ -5,18 +5,25 @@ import ctypes
 from .occlusionAwareEngine import OcclusionAwareEngine
 
 import pylas, os, numpy as np, torch, cv2, sys
-from matplotlib.cm import inferno
+from matplotlib.cm import inferno, autumn
 
 import torch
 import torch.utils.cpp_extension
-print(' - Compiling voxelize.cu')
+print(' - Compiling cuda/c extension')
 voxelize = torch.utils.cpp_extension.load(
         name='voxelize',
         sources=[
-            'heightmapMeshing/csrc/voxelize.cu'
+            'heightmapMeshing/csrc/voxelize.cu',
+            'heightmapMeshing/csrc/surface_net.cc',
+            'heightmapMeshing/csrc/surface_net.cu',
+            'heightmapMeshing/csrc/normals.cu',
+            'heightmapMeshing/csrc/utils.cu'
             ],
-        extra_cflags=['-D_GLIBCXX_USE_CXX11_ABI=0'],
-        extra_cuda_cflags=['-D_GLIBCXX_USE_CXX11_ABI=0']
+        extra_cflags=['-D_GLIBCXX_USE_CXX11_ABI=0', '-g'],
+        extra_cuda_cflags=['-D_GLIBCXX_USE_CXX11_ABI=0'],
+        extra_ldflags=['-lcusolver'],
+        verbose=True
+        #verbose=False
         )
 
 DEBUG_MODE = True
@@ -103,7 +110,7 @@ class PointRenderer(SingletonApp):
         self.angles = np.array((0,0,0),dtype=np.float32)
         self.eye = np.array((-0,-0.0,1),dtype=np.float32)
         self.eye = np.array((-0,-0.0,0),dtype=np.float32)
-        self.eye = np.array((.5,.50,.5),dtype=np.float32)
+        #self.eye = np.array((.5,.50,.5),dtype=np.float32)
         #self.eye = np.array((-0.5,-0.0,-.8),dtype=np.float32)
 
         self.R = np.eye(3,dtype=np.float32)
@@ -115,6 +122,9 @@ class PointRenderer(SingletonApp):
         self.vbo = None
         self.npts = 0
         self.vertSize = 0
+        self.renderIters = 1
+        self.vbo2 = None
+        self.haveNormals = False
 
         #self.sky = np.random.randn(1000,3)
         #self.sky = self.sky / np.linalg.norm(self.sky,axis=1)[:,np.newaxis]
@@ -126,14 +136,18 @@ class PointRenderer(SingletonApp):
         meta = dict(w=self.w,h=self.h)
         self.engine = OcclusionAwareEngine(meta)
         self.DO_PROCESS = True
+        #self.DO_PROCESS = False
+        #self.ONLY_DEPTH_FILTER = True
+        self.ONLY_DEPTH_FILTER = False
         self.haveTris = False
 
-    def setTris(self, verts, colors, tris):
+    def setTris(self, verts, colors, tris, normalPts=None,normals=None):
         self.haveTris = True
         if self.vbo is not None: glDeleteBuffers(1,[self.vbo])
-        self.vbo = glGenBuffers(1)
-        self.ibo = glGenBuffers(1)
+        self.vbo,self.vbo2 = glGenBuffers(2)
         arr = np.hstack((verts,colors))
+        self.ibo,self.ibo2 = glGenBuffers(2)
+
         glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
         glBufferData(GL_ARRAY_BUFFER, arr.shape[1]*arr.shape[0]*4, arr.reshape(-1), GL_STATIC_DRAW)
         glBindBuffer(GL_ARRAY_BUFFER, 0)
@@ -142,11 +156,35 @@ class PointRenderer(SingletonApp):
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0)
         self.vertSize = arr.shape[1]*4
         self.ninds = tris.size
+
+        arr = verts
+        inds = np.hstack((
+            tris[::3][:,np.newaxis], tris[1::3][:,np.newaxis],
+            tris[1::3][:,np.newaxis], tris[2::3][:,np.newaxis],
+            tris[::3][:,np.newaxis], tris[2::3][:,np.newaxis]))
+        print('INDS',inds.shape)
+        self.nindsLines = inds.size
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.ibo2)
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, inds.size*4, inds.reshape(-1), GL_STATIC_DRAW)
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0)
+
+        if normals is not None:
+            arr = np.hstack((normalPts, normalPts+normals*.003))
+            print('normalPts:\n',normalPts)
+            print('normals:\n',normals)
+            glBindBuffer(GL_ARRAY_BUFFER, self.vbo2)
+            glBufferData(GL_ARRAY_BUFFER, arr.shape[1]*arr.shape[0]*4, arr.reshape(-1), GL_STATIC_DRAW)
+            glBindBuffer(GL_ARRAY_BUFFER, 0)
+            self.nnormals = arr.shape[0] * 2
+            self.haveNormals = True
+
     def renderTris(self):
         self.drawAxes()
         glEnable(GL_CULL_FACE)
-        print(' - Rendering', self.ninds, 'inds')
+        if self.renderIters % 200 == 0: print(' - Rendering', self.ninds, 'inds')
         glUseProgram(0)
+        glEnable(GL_POLYGON_OFFSET_FILL)
+        glPolygonOffset(1,1)
         glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.ibo)
         glEnableClientState(GL_VERTEX_ARRAY)
@@ -154,11 +192,28 @@ class PointRenderer(SingletonApp):
         glVertexPointer(3, GL_FLOAT, self.vertSize, ctypes.c_void_p(0))
         glColorPointer(3, GL_FLOAT, self.vertSize, ctypes.c_void_p(12))
         glDrawElements(GL_TRIANGLES, self.ninds, GL_UNSIGNED_INT, ctypes.c_void_p(0))
-        glDisableClientState(GL_VERTEX_ARRAY)
         glDisableClientState(GL_COLOR_ARRAY)
+        glDisable(GL_POLYGON_OFFSET_FILL)
+
+        glColor4f(1,1,1,.3)
+        glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.ibo2)
+        glVertexPointer(3, GL_FLOAT, self.vertSize, ctypes.c_void_p(0))
+        glDrawElements(GL_LINES, self.nindsLines, GL_UNSIGNED_INT, ctypes.c_void_p(0))
+
+        if self.haveNormals:
+            glColor4f(.7,.3,1,.3)
+            glBindBuffer(GL_ARRAY_BUFFER, self.vbo2)
+            glVertexPointer(3, GL_FLOAT, 0, ctypes.c_void_p(0))
+            glDrawArrays(GL_LINES, 0, self.nnormals)
+            glBindBuffer(GL_ARRAY_BUFFER, 0)
+            print(' - rendering', self.nnormals, 'normals')
+        glColor4f(1,1,1,1)
+
+
+        glDisableClientState(GL_VERTEX_ARRAY)
+        glBindBuffer(GL_ARRAY_BUFFER, 0)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0)
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0)
-        print('- done')
 
     def setPts(self, pts, colors=None, normals=None):
         #pts = np.concatenate((pts, self.sky), 0)
@@ -206,24 +261,28 @@ class PointRenderer(SingletonApp):
     def render(self):
         glViewport(0, 0, *self.wh)
         glMatrixMode(GL_PROJECTION)
-        if not self.DO_PROCESS:
-            n = .02
+        if self.DO_PROCESS or self.ONLY_DEPTH_FILTER:
+            glLoadIdentity()
+            lo,hi,sz = self.lo,self.hi,self.sz
+            print(lo,hi)
+            n,f = abs(hi[2]), abs(lo[2])
+            n = .8
+            print(' - NEAR FAR', n, f)
+            f=1
+            #n,f = 1e-4, abs(lo[2])
+            #n,f = 1, 1.5
+            glOrtho(lo[0],hi[0], lo[1],hi[1], n,f)
+        else:
+            n = .001
             f = 4
             v = .5
             u = (v*self.wh[0]) / self.wh[1]
             glLoadIdentity()
             glFrustum(-u*n,u*n,-v*n,v*n,n,f)
-        else:
-            glLoadIdentity()
-            lo,hi,sz = self.lo,self.hi,self.sz
-            print(lo,hi)
-            n,f = abs(hi[2]), abs(lo[2])
-            f=1
-            #n,f = 1e-4, abs(lo[2])
-            #n,f = 1, 1.5
-            glOrtho(lo[0],hi[0], lo[1],hi[1], n,f)
 
-        print(' - view:\n', self.view)
+        if self.renderIters % 60 == 0:
+            print(' - view:\n', self.view)
+        self.renderIters += 1
         glMatrixMode(GL_MODELVIEW)
         glLoadMatrixf(self.view.T.reshape(-1))
 
@@ -241,8 +300,7 @@ class PointRenderer(SingletonApp):
             #self.pp.setRenderTarget()
             #glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
             #self.renderPts(self.pts, self.colors)
-            if self.DO_PROCESS:
-                self.engine.setRenderTarget()
+            if self.DO_PROCESS or self.ONLY_DEPTH_FILTER: self.engine.setRenderTarget()
 
             #glBindFramebuffer(GL_FRAMEBUFFER,0)
             #glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
@@ -252,8 +310,11 @@ class PointRenderer(SingletonApp):
                 self.renderPts(self.pts, self.colors)
             #self.drawTri()
 
+            if self.ONLY_DEPTH_FILTER:
+                self.engine.render(True)
+                self.engine.unsetRenderTarget()
 
-            if self.DO_PROCESS:
+            elif self.DO_PROCESS:
                 self.engine.render(False)
 
                 glViewport(0,0,self.w,self.h)
@@ -270,7 +331,7 @@ class PointRenderer(SingletonApp):
                 self.engine.unsetRenderTarget()
 
                 #elev.mul_(.9)
-                elev[elev>.3] = .1
+                #elev[elev>.3] = .1
                 elev = elev.contiguous()
                 vv = voxelize.forward(elev, 1000)
                 print(elev.shape)
@@ -286,24 +347,32 @@ class PointRenderer(SingletonApp):
                     newPts = newPts.cpu().numpy()
                     #newColors = np.ones((newPts.shape[0],4),dtype=np.float32)
                     newColors = np.ones((newPts.shape[0],3),dtype=np.float32)
-                    newColors[:,:3] = inferno(newPts[:,2:3] / newPts[:,2:3].max())[...,0,:3]
+                    newColors[:,:3] = inferno(.1 + newPts[:,2:3] / newPts[:,2:3].max())[...,0,:3]
                     newPts = newPts * 2 - 1
                     print(' newPts max', newPts.max(0))
                     print(' newPts min', newPts.min(0))
                     self.setPts(newPts,newColors)
                 else:
                     print(' - Making geo')
-                    verts,tris,quads = voxelize.makeGeo(vv, data.shape[0])
-                    verts = verts.cpu().numpy().reshape(-1,3)
+                    #verts,tris,quads = voxelize.makeGeo(vv, data.shape[0])
+                    verts_t,tris,quads = voxelize.makeGeoSurfaceNet(vv, data.shape[0])
+                    verts = verts_t.cpu().numpy().reshape(-1,3)
                     colors = np.ones_like(verts)
                     colors[:,:3] = inferno(verts[:,2:3] / verts[:,2:3].max())[...,0,:3]
                     tris = tris.cpu().numpy()
+                    print(' - Tris:\n', tris)
                     print(verts.shape,colors.shape,tris.shape, tris.max())
                     print('max vert', verts.max(0))
                     print('min vert', verts.min(0))
-                    self.setTris(verts,colors,tris)
 
-            self.DO_PROCESS = False
+                    normalPts,normals = voxelize.estimateSurfaceTangents(verts_t.cuda())
+                    normalPts = normalPts.cpu().numpy()
+                    normals = normals.cpu().numpy()
+
+                    self.setTris(verts,colors,tris, normalPts,normals)
+
+                self.DO_PROCESS = False
+                cv2.waitKey(100)
 
 
     def drawTri(self):
@@ -353,6 +422,7 @@ class PointRenderer(SingletonApp):
         st = .011 - dt
         #if st > 0: time.sleep(st)
         st = max(0,st)
+        #cv2.waitKey(1)
 
 
         return self.q_pressed
@@ -407,6 +477,13 @@ def main_lidar():
             '''
 
             pts, colors, img = process_pc_get_pts(las, dset, stride)
+            pts,density = voxelize.filterOutliers(torch.from_numpy(pts), 12)
+            density = density.cpu().numpy()
+            pts = pts.cpu().numpy()
+            T = 2
+            pts = pts[density>T]
+            colors = autumn(density[density>T] / 5)[...,:3].astype(np.float32)
+            #colors[density<1.7] = (0,1,0)
 
             #app.pts,app.colors = pts,colors
             app.setPts(pts,colors,None)
@@ -459,8 +536,8 @@ def main_synth():
     app.q_pressed = False
 
 if __name__ == '__main__':
-    #main_lidar()
-    main_synth()
+    main_lidar()
+    #main_synth()
 
 
 
