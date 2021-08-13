@@ -12,6 +12,8 @@ int main(int argc, char** argv) {
   std::string fname { argv[1] };
   GltfModel* model = GltfModel::fromFile(fname);
 
+  double scale = std::atof( argv[2] );
+
   TWindow window(900,900, false, "Test1");
   CheckGLErrors("post create window");
 
@@ -19,7 +21,8 @@ int main(int argc, char** argv) {
 
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  double n = 5, r = 120, f = 400; // for Fox
+  double n = scale * .001, r = scale, f = scale * 4;
+  //double n = 5, r = 120, f = 400; // for Fox
   //double n = .001, r = .05, f = 1; // for ToyCar
   //double n = .1, r = 2, f = 20; // for Suzanne
   //double n = 20, r = 520, f = 1200; // for 2CylinderEngine
@@ -67,7 +70,7 @@ int main(int argc, char** argv) {
     // C = (At*Bt)t
     matmul44(rs.mvp, view, proj);
     for (int i=0; i<4; i++) for (int j=0; j<i; j++) std::swap(rs.mvp[i*4+j], rs.mvp[j*4+i]);
-    entity.render(rs);
+    entity.renderScene(rs, 0);
 
     window.endFrame();
     std::cout << " - render.\n";
