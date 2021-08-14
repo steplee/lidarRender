@@ -1,5 +1,6 @@
 #pragma once
 
+#include <unordered_map>
 #include "tdt/gltf.h"
 
 #define CheckGLErrors(desc)                                                                    \
@@ -49,6 +50,8 @@ struct RenderContext {
   Shader basicUniformColorShader = Shader("basicUniformColor");
   Shader basicWhiteShader = Shader("basicWhite");
 
+  std::unordered_map<std::string, Shader> otherShaders;
+
   void compileShaders();
 };
 
@@ -67,7 +70,8 @@ struct GltfEntity {
   GltfEntity();
   ~GltfEntity();
 
-  void render(const RenderState& rs);
+  void renderAllNodes(const RenderState& rs);
+  void renderScene(const RenderState& rs, int i);
   void renderNode(const GltfNode& node, const RenderState& rs);
 
   void upload(const GltfModel& model);
@@ -78,6 +82,7 @@ struct GltfEntity {
   int nvbos=0, ntexs=0;
 
   std::vector<GltfNode> nodes;
+  std::vector<GltfScene> scenes;
   std::vector<GltfMesh> meshes;
   std::vector<GltfPrimitive> prims;
   std::vector<GltfAccessor> accessors;

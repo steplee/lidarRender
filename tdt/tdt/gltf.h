@@ -4,6 +4,7 @@
 #include <Eigen/Core>
 
 #include <vector>
+#include <string_view>
 
 using nlohmann::json;
 
@@ -101,18 +102,22 @@ struct GltfMesh {
   std::string name;
   // Note: no weights
 };
+struct GltfScene {
+  std::string name;
+  std::vector<int> baseNodes;
+};
 
 struct GltfModel {
   public:
     GltfModel(const std::string& dir);
 
     static GltfModel* fromFile(const std::string& fname);
-    static GltfModel* fromGltfString(const std::string& dir, const std::string& fname);
-    static GltfModel* fromGlbString(const std::string& dir, const std::string& fname);
+    static GltfModel* fromGltfString(const std::string& dir, const std::string_view& fname);
+    static GltfModel* fromGlbString(const std::string& dir, const std::string_view& fname);
 
     json jobj;
 
-    void parse(const std::string& jsonString);
+    void parse(const std::string_view& jsonString);
 
   //private:
     std::vector<GltfBuffer> buffers;
@@ -120,6 +125,7 @@ struct GltfModel {
     std::vector<GltfAccessor> accessors;
 
     std::vector<GltfNode> nodes;
+    std::vector<GltfScene> scenes;
     std::vector<GltfMesh> meshes;
 
     std::vector<GltfImage> images;
@@ -130,6 +136,8 @@ struct GltfModel {
     Bytes copyDataFromBufferView(int bv);
 
     std::string dir;
+
+    std::string printInfo();
 };
 
 

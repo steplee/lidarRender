@@ -18,6 +18,7 @@ void GltfEntity::destroy() {
 }
 
 void GltfEntity::upload(const GltfModel& model) {
+  scenes = model.scenes;
   nodes = model.nodes;
   meshes = model.meshes;
   bufferViews = model.bufferViews;
@@ -76,12 +77,16 @@ void GltfEntity::upload(const GltfModel& model) {
 
 }
 
-void GltfEntity::render(const RenderState& rs) {
-
+void GltfEntity::renderAllNodes(const RenderState& rs) {
   for (int i=0; i<nodes.size(); i++) {
     renderNode(nodes[i], rs);
   }
-
+}
+void GltfEntity::renderScene(const RenderState& rs, int si) {
+  auto& sceneNodes = scenes[si].baseNodes;
+  for (int i=0; i<sceneNodes.size(); i++) {
+    renderNode(nodes[sceneNodes[i]], rs);
+  }
 }
 
 

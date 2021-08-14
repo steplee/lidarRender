@@ -65,12 +65,12 @@ GltfModel* GltfModel::fromFile(const std::string& fname) {
       return fromGltfString(dir, str);
 }
 
-GltfModel* GltfModel::fromGltfString(const std::string& dir, const std::string& str) {
+GltfModel* GltfModel::fromGltfString(const std::string& dir, const std::string_view& str) {
   GltfModel* model = new GltfModel(dir);
   model->parse(str);
   return model;
 }
-GltfModel* GltfModel::fromGlbString(const std::string& dir, const std::string& str) {
+GltfModel* GltfModel::fromGlbString(const std::string& dir, const std::string_view& str) {
 
   ENSURE(str[0] == 'g');
   ENSURE(str[1] == 'l');
@@ -153,7 +153,7 @@ static void printMatrix(double a[16]) {
 GltfModel::GltfModel(const std::string& dir_) : dir(dir_) {
 }
 
-void GltfModel::parse(const std::string& jsonString) {
+void GltfModel::parse(const std::string_view& jsonString) {
   jobj = json::parse(jsonString);
 
   // Parse it.
@@ -205,7 +205,7 @@ void GltfModel::parse(const std::string& jsonString) {
       node.xform[7] += (double)j["translation"][1];
       node.xform[11] += (double)j["translation"][2];
     }
-    std::cout << " - Node Transform:\n"; printMatrix(node.xform);
+    //std::cout << " - Node Transform:\n"; printMatrix(node.xform);
     for (const int& i: jobj["children"]) node.children.push_back(i);
     nodes.push_back(node);
   }
@@ -293,7 +293,7 @@ void GltfModel::parse(const std::string& jsonString) {
     decodeImage(img.decodedData, img.w, img.h, img.channels, data, "");
     //std::cout << " - Decoded Image : " << img.w << " "<< img.h << " " << img.channels << "\n";
     //for (int i=0; i<512*512*3; i++) std::cout << (int)img.decodedData[i] << " ";
-    std::cout << "\n";
+    //std::cout << "\n";
 
     images.push_back(img);
   }
@@ -335,7 +335,14 @@ void GltfModel::parse(const std::string& jsonString) {
       for (int i=0; i<3; i++) m.emissiveFactor[i] = 0;
     if (j.contains("occlusionTexture")) m.occlusionTexture = GltfTextureRef { j["occlusionTexture"] };
     materials.push_back(m);
-    std::cout << " - pushing material.\n" << "\n";
+    //std::cout << " - pushing material.\n" << "\n";
+  }
+
+  for (const json& j : jobj["scenes"]) {
+    GltfScene s;
+    s.name = j.value("name", "<noname>");
+    for (const int i : j["nodes"]) s.baseNodes.push_back(i);
+    scenes.push_back(s);
   }
 
 }
@@ -352,4 +359,18 @@ Bytes GltfModel::copyDataFromBufferView(int bv_) {
   out.resize(bv.byteLength);
   memcpy(out.data(), buffers[bv.buffer].data.data() + bv.byteOffset, bv.byteLength);
   return out;
+}
+
+#include <sstream>
+std::string GltfModel::printInfo() {
+  char buf[4096]; int n = 0;
+  n += sprintf(buf+n, " - GltfModel at dir '%s'\n", dir.c_str());
+  n += sprintf(buf+n, "\t- (%d scenes / %d nodes / %d meshes)\n", scenes.size(), nodes.size(), meshes.size());
+  n += sprintf(buf+n, "\t- (%d buffers) (sizes ", buffers.size());
+  for (int i=0; i<buffers.size(); i++) n += sprintf(buf+n, "%d", buffers[i].byteLength); n += sprintf(buf+n, ")\n");
+  n += sprintf(buf+n, "\t- (%d bufferViews)\n", bufferViews.size());
+  n += sprintf(buf+n, "\t- (%d accessors)\n", accessors.size());
+  n += sprintf(buf+n, "\t- (%d images / %d textures / %d materials / %d samplers)\n", images.size(), textures.size(), materials.size(), samplers.size());
+
+  return std::string{buf, n};
 }
