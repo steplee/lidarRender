@@ -7,5 +7,8 @@ struct HeightMapRasterizer {
   void run(const std::vector<LasPoint>& pts);
 
   std::vector<float> inlyingPoints;
+
+  std::vector<int> meshTris;
+  std::vector<float> meshVerts;
 };
 
