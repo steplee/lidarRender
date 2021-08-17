@@ -40,7 +40,11 @@ struct TileBase {
   static TileBase* fromFile(const std::string& fname);
 };
 
-struct Tileset : public TileBase {};
+struct TilesetProperties {};
+struct Tileset : public TileBase {
+  public:
+    TilesetProperties props;
+};
 struct Tile : public TileBase {
   Refinement refine;
 

@@ -1,5 +1,26 @@
 #include "parse.h"
+#include <cassert>
+#include <fstream>
 
+static bool readFile(Bytes& out, const std::string& fname) {
+  std::ifstream ifs(fname);
+  ifs.seekg(0, std::ios::end);
+  out.reserve(ifs.tellg());
+  ifs.seekg(0, std::ios::beg);
+  out.assign((std::istreambuf_iterator<char>(ifs)),
+                  std::istreambuf_iterator<char>());
+
+  return true;
+}
+static bool readFile(std::string& out, const std::string& fname) {
+  std::ifstream ifs(fname);
+  ifs.seekg(0, std::ios::end);
+  out.reserve(ifs.tellg());
+  ifs.seekg(0, std::ios::beg);
+  out.assign((std::istreambuf_iterator<char>(ifs)),
+                  std::istreambuf_iterator<char>());
+  return true;
+}
 
 void Tile::open() {
 }
@@ -60,4 +81,8 @@ const char* BatchTable::parse(const char* bytes, int json_len, int bin_len) {
 
 TileBase* TileBase::fromFile(const std::string& fname) {
   TileBase* out = new TileBase();
+  std::string json_str;
+  assert(readFile(json_str, fname));
+  auto jobj = json::parse(json_str);
+  //out->
 }
