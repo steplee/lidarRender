@@ -17,6 +17,7 @@ struct CuImage {
   void release() {
     if (buf != 0) cudaFree(buf);
     w=h=c=pitch=allocatedSize = 0;
+    buf = 0;
   }
   ~CuImage() { release(); }
   inline CuImage() {};

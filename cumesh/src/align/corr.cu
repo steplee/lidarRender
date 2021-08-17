@@ -10,7 +10,7 @@
 // Actual image sizes are pitch by pitch, which includes half zeros along each axis
 struct ImagePatches {
   float *buf;
-  int fullSquareSize, overlap;
+  int fullSquareSize, overlap, stepSize;
   int n, nw, nh, pitch;
 
   void release();
@@ -32,7 +32,7 @@ static void show_patches(const ImagePatches& ps, const char* name, int wait=0) {
     cudaMemcpy2D(dimg.data, s*sizeof(float), ps.buf+(yy*ps.nw+xx)*p*p, p*sizeof(float), sizeof(float)*s,s, cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
     double min, max; cv::minMaxLoc(dimg,&min,&max);
-    std::cout << " - min max " << min << " " << max << "\n";
+    //std::cout << " - min max " << min << " " << max << "\n";
     cv::normalize(dimg,dimg, 0, 255, cv::NORM_MINMAX, CV_8UC1);
     cv::imshow(name, dimg); cv::waitKey(wait);
   }
@@ -76,7 +76,7 @@ static void show_corr(const ImagePatches& pa, const ImagePatches& pb, const floa
 
     cv::Point mini,maxi;
     double min, max; cv::minMaxLoc(dimgs[4],&min,&max,&mini,&maxi);
-    std::cout << " - corr min max " << min << " " << max << " | " << maxi << "\n";
+    //std::cout << " - corr min max " << min << " " << max << " | " << maxi << "\n";
     cv::normalize(dimgs[4],dimgs[0], 0, 255, cv::NORM_MINMAX, CV_8UC1);
     cv::hconcat(dimgs, 3, dimg);
 
@@ -149,6 +149,7 @@ ImagePatches slice_and_pad(CuImage<float>& inImg, bool flip) {
   outs.fullSquareSize = fullSquareSize;
   outs.overlap = overlapSize;
   outs.pitch = pitch;
+  outs.stepSize = squareSize;
 
   printf(" - Slicing img (%d %d) to get (%d * %d**2) patches.\n", inH,inW, outs.n, outs.fullSquareSize);
 
@@ -227,8 +228,8 @@ void fft_get_max_location(int2* outs, float* corrs, int n, int w, int h) {
       //<< " y " << (thrust::get<0>(tmp[i]) % (w*h)) / w
       //<< " wh " << w << " " << h
       //<< "\n";
-    int xx = (thrust::get<0>(tmp[i]) % (w*h)) % w;
-    int yy = (thrust::get<0>(tmp[i]) % (w*h)) / w;
+    int xx = (thrust::get<0>(tmp[i]) % (w*h)) % w - w/2;
+    int yy = (thrust::get<0>(tmp[i]) % (w*h)) / w - h/2;
     outs[i] = make_int2(xx,yy);
   }
   cudaFree(tmp);
@@ -300,9 +301,48 @@ void do_corr(CuImage<float>& imga, CuImage<float>& imgb) {
   fft_get_max_location(maxLocations, (float*)ifab, n, size, size);
   //for (int i=0; i<n; i++) std::cout << " - max at " << maxLocations[i].x << " " << maxLocations[i].y << "\n";
 
+  // Show offsets
+  cv::Mat dimg0(imga.h,imga.w,CV_32F), dimga, dimgb;
+  cudaMemcpy(dimg0.data, imga.buf, sizeof(float)*imga.w*imga.h, cudaMemcpyDeviceToHost);
+  cv::normalize(dimg0,dimga, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+  cudaMemcpy(dimg0.data, imgb.buf, sizeof(float)*imgb.w*imgb.h, cudaMemcpyDeviceToHost);
+  cv::normalize(dimg0,dimgb, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+  cv::Mat dimg(imga.h, imga.w, CV_8UC3);
+  for (int y=0; y<imga.h; y++)
+  for (int x=0; x<imga.w; x++) {
+    uint8_t b = dimga.at<uint8_t>(y,x);
+    uint8_t g = dimgb.at<uint8_t>(y,x);
+    dimg.at<cv::Vec3b>(y,x) = cv::Vec3b{b,g,0};
+  }
+  for (int yy=0; yy<patchesa.nh; yy++)
+  for (int xx=0; xx<patchesa.nw; xx++) {
+    int i = yy*patchesa.nw + xx;
+    int y0 = yy * patchesa.stepSize + patchesa.stepSize / 2 + maxLocations[i].x;
+    int x0 = xx * patchesa.stepSize + patchesa.stepSize / 2 + maxLocations[i].y;
+    cv::Point pt0 { y0 , x0 };
+
+    for (int dy=-1; dy<1; dy++)
+    for (int dx=-1; dx<1; dx++) {
+      if (dy == 0 and dx == 0) continue;
+      if (dy == dx) continue;
+      if (x0+dx > 0 and y0+dy > 0) {
+        int j = (yy+dy)*patchesa.nw + (dx+xx);
+        int y1 = (yy + dy) * patchesa.stepSize + patchesa.stepSize / 2 + maxLocations[j].x;
+        int x1 = (xx + dx) * patchesa.stepSize + patchesa.stepSize / 2 + maxLocations[j].y;
+        cv::Point pt1 { y1 , x1 };
+        std::cout << " - line " << y0 << " " << x0 << " " << pt0 << " " << pt1 << " " << patchesa.stepSize << "\n";
+        cv::line(dimg, pt0, pt1, cv::Scalar{0,255,0}, 1);
+      }
+    }
+  }
+  //cv::resize(dimg,dimg, cv::Size{1024, 1024*dimg.rows/dimg.cols});
+  cv::pyrDown(dimg,dimg);
+  cv::imshow("Grid", dimg); cv::waitKey(0);
+
   cudaFree(fab);
   cudaFree(fb);
   cudaFree(fa);
   patchesa.release();
   patchesb.release();
+
 }

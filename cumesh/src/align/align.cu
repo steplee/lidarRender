@@ -83,10 +83,12 @@ void compute_grad_norm(CuImage<float>& grad, CuImage<float>& elev) {
   compute_grad_norm_<<<blk,thr>>>(grad.buf, w,h, elev.buf,w,h);
   cudaDeviceSynchronize();
 
+  /*
   float mean = thrust::reduce(thrust::device, grad.buf, grad.buf+w*h, 0.f,
       []__device__(const float& a, const float& b) { return (a+b)/2.f; });
   thrust::transform(thrust::device, grad.buf, grad.buf+w*h, grad.buf,
       [=]__device__(const float& a) { return a-mean; });
+      */
 
   show_img(grad, "GradNorm", 0);
 }
@@ -111,6 +113,4 @@ void align_tiff(
   compute_grad_norm(rgbGrad, img);
 
   do_corr(rgbGrad, elevGrad);
-
-
 }

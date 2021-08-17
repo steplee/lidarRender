@@ -52,6 +52,7 @@ add_library(cumeshing
 
   src/heightmap/octree.cu
   src/heightmap/make.cu
+  src/heightmap/make_geo.cu
   src/heightmap/marching_cubes.cu
 
   src/align/align.cu

@@ -17,6 +17,7 @@ using DevVector = thrust::device_vector<T>;
 #include <opencv2/highgui.hpp>
 
 #include "octree.h"
+#include "make_geo.h"
 
 
 static void show_img(const CuImage<float>& img, const char* name, int wait=0, int fixW=-1,int fixH=-1) {
@@ -54,23 +55,6 @@ static void filterPoints(std::vector<float3>& out, const std::vector<LasPoint>& 
     }
   }
 }
-
-
-static __global__ void min_max_(CuImage<float2>& out, float3* pts, int N) {
-  //int ty = threadIdx.y + blockIdx.y * blockDim.y;
-  //int tx = threadIdx.x + blockIdx.x * blockDim.x;
-  int ty = blockIdx.y;
-  int tx = blockIdx.x;
-
-  int w = out.w, h = out.h;
-  if (ty >= h or tx >= w) return;
-
-  out.buf[ty*w+tx] = make_float2(0,0);
-}
-static void createMinMaxImage(CuImage<float>& out, float3* pts) {
-}
-
-
 
 
 static __global__ void is_cell_bad_(bool* out, const int64_t* pts, const int32_t* cnts, int C) {
@@ -177,11 +161,16 @@ void orthographically_rasterize(CuImage<float2>& out, float* pts, int N) {
   int *keys = 0; cudaMalloc(&keys, sizeof(int)*2*N);
   float *vals = 0; cudaMalloc(&vals, sizeof(float)*1*N);
   int *keys2 = 0; cudaMalloc(&keys2, sizeof(int)*2*N);
-  float *vals2 = 0; cudaMalloc(&vals2, sizeof(float)*1*N);
+  float *vals2 = 0; cudaMalloc(&vals2, sizeof(float)*2*N);
   float2 *vals3 = 0; cudaMalloc(&vals3, sizeof(float2)*1*N);
   int w = out.w, h = out.h;
   thrust::transform(thrust::device, (float3*)pts, ((float3*)pts)+N, keys,
-        [=] __device__ (const float3& pt) { return (int)(pt.x*w+.5f) + w*(int)(pt.y*h+.5f); });
+        //[=] __device__ (const float3& pt) { return min((int)(pt.x*w+.5f),w) + w*min(h,(int)(pt.y*h+.5f)); });
+        //[=] __device__ (const float3& pt) { return (int)(pt.x*w+.5f) + w*(int)(pt.y*h+.5f); });
+        [=] __device__ (const float3& pt) {
+          int i = max(0,min((int)(pt.x*w+.5f),w-1)) + w*max(0,min(h-1,(int)(pt.y*h+.5f)));
+          //if (i<0 or i>=w*h) printf(" - %d / %d\n", i, w*h);
+          return i; });
   thrust::transform(thrust::device, (float3*)pts, ((float3*)pts)+N, vals,
         [=] __device__ (const float3& pt) { return pt.z; });
   thrust::sort_by_key(thrust::device, keys, keys+N, vals);
@@ -194,8 +183,13 @@ void orthographically_rasterize(CuImage<float2>& out, float* pts, int N) {
   //scatter_<<<(
   fill_vals<<<(N2+127)/128, 128>>>(vals3, vals2, N2);
   thrust::fill(thrust::device, out.buf, out.buf+out.w*out.h, make_float2(0,0));
-  thrust::scatter(thrust::device, vals3, vals3+N, keys2, (float2*)out.buf);
+  thrust::scatter(thrust::device, vals3, vals3+N2, keys2, (float2*)out.buf);
   cudaDeviceSynchronize(); getLastCudaError("post rasterize_");
+  cudaFree(keys);
+  cudaFree(keys2);
+  cudaFree(vals);
+  cudaFree(vals2);
+  cudaFree(vals3);
 }
 
 // Fill in empty gaps by pyramidal push-pull
@@ -299,15 +293,12 @@ static __global__ void median_filter_(float* out, const float* in, int w, int h)
     grp[i] = grp[best];
     grp[best] = tmp;
   }
-
-  //out[ty*w+tx] = .5 * (grp[n/2] + grp[(n+1)/2]);
   out[ty*w+tx] = grp[(N*N+1)/2];
 }
 
 void push_pull_filter(CuImage<float>& out, CuImage<float2>& base) {
-  int nlvls = 4;
+  constexpr int nlvls = 4;
   CuImage<float> outRaw;
-
   CuImage<float2> lvls1[nlvls];
 
   int W = base.w, H = base.h;
@@ -323,7 +314,7 @@ void push_pull_filter(CuImage<float>& out, CuImage<float2>& base) {
 
   lvls1[0].allocate(w,h,1);
   cudaMemcpy(lvls1[0].buf, base.buf, sizeof(float2)*w*h, cudaMemcpyDeviceToDevice);
-  show_img(lvls1[0], "down", 0);
+  //show_img(lvls1[0], "down", 0);
 
   //show_img(base, "base", 0);
   for (int i=1; i<nlvls; i++) {
@@ -339,7 +330,7 @@ void push_pull_filter(CuImage<float>& out, CuImage<float2>& base) {
     lastLvl = &lvls1[i];
     cudaDeviceSynchronize();
 
-    show_img(lvls1[i], "down", 0);
+    //show_img(lvls1[i], "down", 0);
   }
 
   w<<=1; h<<=1;
@@ -354,27 +345,135 @@ void push_pull_filter(CuImage<float>& out, CuImage<float2>& base) {
     lastLvl = &lvls1[i];
     cudaDeviceSynchronize();
 
-    show_img(passed[i%2], "up", 0, w,h);
+    //show_img(passed[i%2], "up", 0, w,h);
     w<<=1; h<<=1;
   }
+  cudaDeviceSynchronize(); getLastCudaError("post push-pull");
 
   outRaw.allocate(W,H,1);
 
   // Copy output xy -> x
   thrust::transform(thrust::device, passed[0].buf, passed[0].buf+W*H, outRaw.buf, []__device__(const float2& f) { return f.x; });
+  cudaDeviceSynchronize(); getLastCudaError("post transform");
 
   // Free old buffers
   for (int i=0; i<nlvls; i++) lvls1[i].release();
+  for (int i=0; i<2; i++) passed[i].release();
+  cudaDeviceSynchronize(); getLastCudaError("post release");
 
   // Do median filter
   out.allocate(W,H,1);
   dim3 blk((H+15)/16, (W+15)/16);
   dim3 thr(16,16);
+  cudaDeviceSynchronize(); getLastCudaError("pre-median");
   //median_filter_<3><<<blk,thr>>>(out.buf, outRaw.buf, W,H);
   median_filter_<5><<<blk,thr>>>(out.buf, outRaw.buf, W,H);
-  show_img(out, "filtered", 0, W,H);
+  //show_img(out, "filtered", 0, W,H);
+  cudaDeviceSynchronize(); getLastCudaError("post-median");
+  outRaw.release();
+  cudaDeviceSynchronize(); getLastCudaError("post-free");
 }
 
+const int8_t PLUS_Z = 1;
+const int8_t MNUS_Z = 2;
+const int8_t PLUS_X = 4;
+const int8_t MNUS_X = 8;
+const int8_t PLUS_Y = 16;
+const int8_t MNUS_Y = 32;
+static __global__ void fillLvl(
+    int4* inds, int G, int lvl,
+    float* surface) {
+  int y = blockIdx.y * blockDim.y + threadIdx.y;
+  int x = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (y<0 or y>=G or x<0 or x>=G) return;
+
+  float factor = 1. / ((float)G);
+  float myZ = ((float)lvl) * factor;
+  float mySurfaceZ = surface[y*G+x];
+
+  int8_t dirMask = 0;
+
+  float myLastZ = ((float)(lvl-1)) * factor;
+  // nope
+  if (myLastZ > mySurfaceZ) return;
+  if (myZ > mySurfaceZ) dirMask = PLUS_Z;
+
+  for (int dd=0; dd<4; dd++) {
+    int dx = dd == 0 ? 1 : dd == 1 ? -1 : 0;
+    int dy = dd == 2 ? 1 : dd == 3 ? -1 : 0;
+
+    int yy = y+dy;
+    int xx = x+dx;
+    if (yy>=0 && yy < G && xx>=0 && xx < G) {
+      float neighborSurfaceZ = surface[yy*G+xx];
+      //if (myZ > neighborSurfaceZ) dirMask |= ((i!=0)*4*(i+3)) | ((j!=0)*2*(j+3));
+      if (myZ > neighborSurfaceZ and neighborSurfaceZ < myLastZ)
+        if (dx ==  1) dirMask |= PLUS_X;
+        else if (dx == -1) dirMask |= MNUS_X;
+        else if (dy ==  1) dirMask |= PLUS_Y;
+        else dirMask |= MNUS_Y;
+    }
+  }
+
+  int i = y*G+x;
+  if (dirMask) {
+    //printf(" %d | %d %d %d\n", i,x,y,lvl);
+    //printf(" %d | %d %d %d %f\n", i,x,y,lvl,mySurfaceZ);
+    inds[i] = make_int4(x,y,lvl,dirMask);
+  } else {
+    inds[i] = make_int4(-1,-1,-1,-1);
+  }
+}
+int build_initial_surface(int4*& outVerts, const CuImage<float>& surface) {
+  cudaDeviceSynchronize(); getLastCudaError("pre build surface");
+  int G = surface.w;
+  float surface_max = thrust::reduce(thrust::device, surface.buf, surface.buf+surface.w*surface.h, 0.f, thrust::maximum<float>());
+  float surface_min = thrust::reduce(thrust::device, surface.buf, surface.buf+surface.w*surface.h, 0.f, thrust::minimum<float>());
+  printf(" - min max surface: %f %f\n", surface_min, surface_max);
+  //float surface_max = .1;
+  //float surface_min = 0;
+  int max_z_lvl = surface_max * surface.w + 1;
+  int min_z_lvl = surface_min * surface.w;
+
+  int4* lvlVerts, *lvlVerts2;
+  int N = G*G;
+  cudaMalloc(&lvlVerts, sizeof(int4)*N);
+  cudaMalloc(&lvlVerts2, sizeof(int4)*N);
+
+  thrust::device_vector<int4> verts0_;
+  auto verts0 = &verts0_;
+  int nn = 0;
+
+  for (int l=min_z_lvl; l<max_z_lvl; l++) {
+    thrust::fill(thrust::device, lvlVerts, lvlVerts+N, make_int4(-1,-1,-1,-1));
+    cudaDeviceSynchronize(); getLastCudaError("post fill1");
+    dim3 blk((G+15)/16, (G+15)/16);
+    dim3 thr(16,16);
+    fillLvl<<<blk,thr>>>(lvlVerts, G,l, surface.buf);
+    cudaDeviceSynchronize(); getLastCudaError("post fill");
+
+    int n_old = nn;
+    auto it = thrust::copy_if(thrust::device, lvlVerts, lvlVerts+N, lvlVerts2,
+        []__device__(const int4 &a) { return a.x != -1; });
+    cudaDeviceSynchronize(); getLastCudaError("post copy_if");
+    int n_lvl = it - lvlVerts2;
+
+    verts0->resize(n_old + n_lvl);
+    cudaDeviceSynchronize(); getLastCudaError("post resize");
+    cudaMemcpy(
+        ((int4*)thrust::raw_pointer_cast(verts0->data())) + n_old,
+        lvlVerts2, sizeof(int4)*n_lvl, cudaMemcpyDeviceToDevice);
+    cudaDeviceSynchronize(); getLastCudaError("post copy");
+    nn = verts0->size();
+    nn += n_lvl;
+  }
+
+  cudaMalloc(&outVerts, sizeof(int4)*nn);
+  cudaMemcpy(outVerts, thrust::raw_pointer_cast(verts0->data()), sizeof(int4)*nn, cudaMemcpyDeviceToDevice);
+    cudaDeviceSynchronize(); getLastCudaError("post final memcpy");
+  return nn;
+}
 
 void HeightMapRasterizer::run(const std::vector<LasPoint>& pts0) {
   // Filter points.
@@ -414,7 +513,6 @@ void HeightMapRasterizer::run(const std::vector<LasPoint>& pts0) {
   // Note I could write some kernels to operate on nodes directly, but this is easer
   //createOctree(tree, (float3*)dev_pts2, N2, 16, 5);
 
-
   // Create raw heightmap
   CuImage<float2> map; // first channel is value, second is weight
   CuImage<float> finalMap;
@@ -436,6 +534,34 @@ void HeightMapRasterizer::run(const std::vector<LasPoint>& pts0) {
 
   // Push-Pull filter to fill in empty gaps
   push_pull_filter(finalMap, map);
+  cudaDeviceSynchronize(); getLastCudaError("post push pull filter");
+
+  // Build initial surface
+  int4* verts;
+  int ns = build_initial_surface(verts, finalMap);
+
+#if 0
+  int4* vertsCpu = (int4*)malloc(sizeof(int4)*ns);
+  cudaMemcpy(vertsCpu, verts, sizeof(int4)*ns, cudaMemcpyDeviceToHost);
+  cudaDeviceSynchronize();
+  inlyingPoints.resize(ns*3);
+  for (int i=0; i<ns; i++) {
+    int4 &p = vertsCpu[i];
+    inlyingPoints[i*3+0] = p.x / ((float)mapRes);
+    inlyingPoints[i*3+1] = p.y / ((float)mapRes);
+    inlyingPoints[i*3+2] = p.z / ((float)mapRes);
+    //if (i % 50000 == 0) printf(" - %d | %d %d %d\n", i, vertsCpu[i].x,vertsCpu[i].y,vertsCpu[i].z);
+  }
+  free(vertsCpu);
+#endif
+
+  // Build quads
+  GpuBuffer<int3> tris;
+  GpuBuffer<int4> quads;
+  GpuBuffer<int> vert2tris;
+  int G = mapRes;
+  makeGeo(meshVerts, meshTris, tris, quads, vert2tris, verts, ns, G);
 
   // Fin
+  cudaFree(verts);
 }
