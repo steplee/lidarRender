@@ -18,7 +18,7 @@ enum class DataType {
 enum class AttributeType {
   POSITION, NORMAL,
   TANGENT, TEXCOORD_0, TEXCOORD_1,
-  COLOR_0, JOINTS_0, WEIGHTS_0
+  COLOR_0, JOINTS_0, WEIGHTS_0, BATCHID
 };
 enum class AlphaMode {
   OPAQUE, MASK, BLEND

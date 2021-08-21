@@ -15,14 +15,18 @@ add_library(tdt
   tdt/render_context.cc
   tdt/tdt.cc
 
+  tdt/extra_entities.cc
+  tdt/camera.cc
+
   tdt/tdtiles/parse.cc
+  tdt/tdtiles/sight.cc
   )
 
 add_library(viewUtils
   tdt/window.cc)
 
 add_executable(test_tdt
-  test/test.cc)
+  test/test_tdt.cc)
 add_executable(printInfo
   test/print_info.cc)
 

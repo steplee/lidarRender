@@ -1,6 +1,8 @@
-#include "gltf_entity.h"
+//#include "gltf_entity.h"
+#include "tdt/render_context.h"
 #include <GL/glew.h>
 #include <iostream>
+#include <cstring>
 
 
 // -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  - 
@@ -179,7 +181,7 @@ void RenderContext::compileShaders() {
   glDeleteShader(basicTexturedVert); glDeleteShader(basicTexturedFrag);
 }
 
-RenderState::RenderState(const RenderContext* ctx_)
+RenderState::RenderState(RenderContext* ctx_)
   : ctx(ctx_)
 {
   for (int i=0; i<16; i++) mvp[i] = i/4 == i%4;

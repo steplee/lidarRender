@@ -1,4 +1,5 @@
 #include "tdt/gltf_entity.h"
+#include "tdt/render_context.h"
 #include <iostream>
 
 #include "GL/glew.h"

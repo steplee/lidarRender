@@ -2,6 +2,7 @@
 
 #include "tdt/gltf.h"
 #include "tdt/gltf_entity.h"
+#include "tdt/render_context.h"
 
 #include <unistd.h>
 #include <iostream>
@@ -71,6 +72,7 @@ int main(int argc, char** argv) {
     matmul44(rs.mvp, view, proj);
     for (int i=0; i<4; i++) for (int j=0; j<i; j++) std::swap(rs.mvp[i*4+j], rs.mvp[j*4+i]);
     entity.renderScene(rs, 0);
+
 
     window.endFrame();
     std::cout << " - render.\n";

@@ -15,6 +15,8 @@
 #define STBI_NO_STDIO
 #include "stb_image.h"
 
+#include "io.hpp"
+
 #define ENSURE(x) assert((x));
 
 static void decodeImage(Bytes& out, int& outW, int& outH, int& outC, const Bytes& in, const std::string& type) {
@@ -22,26 +24,6 @@ static void decodeImage(Bytes& out, int& outW, int& outH, int& outC, const Bytes
   out.resize(outC*outW*outH);
   memcpy(out.data(), data, outC*outW*outH);
   stbi_image_free(data);
-}
-
-static bool readFile(Bytes& out, const std::string& fname) {
-  std::ifstream ifs(fname);
-  ifs.seekg(0, std::ios::end);
-  out.reserve(ifs.tellg());
-  ifs.seekg(0, std::ios::beg);
-  out.assign((std::istreambuf_iterator<char>(ifs)),
-                  std::istreambuf_iterator<char>());
-
-  return true;
-}
-static bool readFile(std::string& out, const std::string& fname) {
-  std::ifstream ifs(fname);
-  ifs.seekg(0, std::ios::end);
-  out.reserve(ifs.tellg());
-  ifs.seekg(0, std::ios::beg);
-  out.assign((std::istreambuf_iterator<char>(ifs)),
-                  std::istreambuf_iterator<char>());
-  return true;
 }
 
 GltfModel* GltfModel::fromFile(const std::string& fname) {
@@ -128,6 +110,7 @@ static AttributeType parseAttributeType(const std::string& s) {
   if (s == "COLOR_0") return AttributeType::COLOR_0;
   if (s == "JOINTS_0") return AttributeType::JOINTS_0;
   if (s == "WEIGHTS_0") return AttributeType::WEIGHTS_0;
+  if (s == "_BATCHID") return AttributeType::BATCHID;
   ENSURE(false);
 }
 static DataType parseDataType(const std::string& s) {
