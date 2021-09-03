@@ -4,56 +4,9 @@
 #include <iostream>
 #include "../io.hpp"
 
-#include "tdt/render_context.h"
-#include "tdt/extra_entities.h"
 
 using namespace nlohmann;
 
-void Tile::upload() {
-  assert(model != nullptr);
-  assert(entity == nullptr);
-  entity = new TileEntity();
-  entity->upload(*model->model);
-  delete model; model = 0;
-}
-void Tile::unload() {
-}
-void Tile::open() {
-  //if (not loaded) {
-    //loader->enqueue_load(this);
-    //state = State::OPENING;
-  //}
-  Bytes bytes;
-  std::cout << " - reading file " << root->dir + contentUri << "\n";
-  readFile(bytes, root->dir + contentUri);
-  model = TileModel::parse_b3dm(".", (const char*) bytes.data(), bytes.size());
-  upload();
-}
-void Tile::close() {
-  if (loaded) {
-    unload();
-  }
-  if (entity) delete entity;
-  state = State::CLOSED;
-}
-float Tile::computeSSE(RenderState& rs) {
-}
-void Tile::render(RenderState& rs) {
-  if (entity) entity->renderAllNodes(rs);
-  for (auto& c : children) c->render(rs);
-
-  if (bndVol.type == BoundingVolume::Type::BBOX) {
-  } else if (bndVol.type == BoundingVolume::Type::SPHERE) {
-    if (rs.sphereEntity != nullptr) {
-      //std::cout << " - rendering sphere from bnd vol " << bndVol.data.sphere[3] << ".\n";
-      rs.sphereEntity->setPositionAndRadius(bndVol.data.sphere, bndVol.data.sphere[3]);
-      rs.sphereEntity->render(rs);
-    }
-  }
-}
-void TileRoot::render(RenderState& rs) {
-  for (auto& c : children) c->render(rs);
-}
 
 BoundingVolume BoundingVolume::parse(const json& j) {
   BoundingVolume v;
@@ -146,6 +99,43 @@ TileRoot::TileRoot(const std::string& dir_, const std::string& fname) {
   std::stack<TileBase*> st2;
   st1.push(jobj1);
   st2.push(root);
+
+  double baseGeoError = jobj0["geometricError"];
+  root->geoError = baseGeoError;
+
+  while (not st1.empty()) {
+    auto jobj = st1.top();
+    auto cur = st2.top();
+    st1.pop(); st2.pop();
+
+
+    if (jobj.contains("boundingVolume")) {
+      cur->bndVol = BoundingVolume::parse(jobj["boundingVolume"]);
+    }
+    if (jobj.contains("geometricError")) {
+      cur->geoError = jobj["geometricError"];
+    }
+
+    Tile* cur_ = dynamic_cast<Tile*>(cur);
+    if (cur_) {
+      cur_->root = root;
+      if (jobj.contains("content")) {
+        cur_->contentUri = jobj["content"]["uri"];
+      }
+      std::cout << " - uri " << cur_->contentUri << "\n";
+    }
+
+    for (auto& j : jobj["children"]) {
+      auto nxt = new Tile();
+      cur->children.push_back(nxt);
+      st1.push(j);
+      st2.push(nxt);
+
+      if (not j.contains("geometricError")) nxt->geoError = cur->geoError;
+    }
+  }
+
+  /*
   while (not st1.empty()) {
     auto jobj = st1.top();
     auto parent = st2.top();
@@ -160,10 +150,11 @@ TileRoot::TileRoot(const std::string& dir_, const std::string& fname) {
         cur->contentUri = j["content"]["uri"];
       }
       std::cout << " - uri " << cur->contentUri << "\n";
-      cur->open();
+      //cur->open();
       parent->children.push_back(cur);
       st1.push(j);
       st2.push(cur);
     }
   }
+  */
 }

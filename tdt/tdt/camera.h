@@ -18,13 +18,26 @@ class Camera {
 
     void viewProj(double out[16]);
 
-    void updateView(const double in[16]);
     void updateCamSpec(const CamSpec& s);
     void updateNearFar(float n, float f);
 
-  private:
+    virtual void step(double dt) {};
+    bool isSame(const Camera& other);
+
+    virtual void setPos(const double t[3]);
+    virtual void setRot(const double R[9]);
+    virtual void getPos(double t[3]);
+    virtual void getRot(double R[9]);
+    inline float getU() { return camSpec.u; }
+    inline float getV() { return camSpec.v; }
+
+    inline const CamSpec& getSpec() { return camSpec; }
+
+  protected:
     CamSpec camSpec;
 
-    double view[16];
-    double proj[16];
+    alignas(8) double view[16];
+    alignas(8) double proj[16];
+
 };
+

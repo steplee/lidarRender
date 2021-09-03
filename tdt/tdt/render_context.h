@@ -54,13 +54,16 @@ struct RenderContext {
 
 class SphereEntity;
 class BoxEntity;
+class Camera;
 
 struct RenderState {
   RenderState(RenderContext* ctx);
   RenderState(const RenderState& rs);
 
   // These are ROW major
-  double mvp[16];
+  alignas(8) double mvp[16];
+  int16_t w=0, h=0;
+  Camera* cam = nullptr;
 
   SphereEntity* sphereEntity = nullptr;
   BoxEntity* boxEntity = nullptr;

@@ -11,6 +11,7 @@ GltfEntity::GltfEntity() {
 }
 
 GltfEntity::~GltfEntity() {
+  destroy();
 }
 void GltfEntity::destroy() {
   if (nvbos > 0) glDeleteBuffers(nvbos, vbos);

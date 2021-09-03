@@ -16,7 +16,7 @@ class Sight {
   public:
     Sight();
 
-    void addTileset(const std::string& filepath);
+    void addTileset(const std::string& dir, const std::string& filepath);
 
     void render(RenderState&);
     void update(RenderState&);
@@ -25,7 +25,6 @@ class Sight {
   private:
     std::vector<TileRoot*> roots;
 
-    Camera cam;
-
+    //Camera cam;
 
 };

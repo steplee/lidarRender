@@ -101,6 +101,17 @@ static bool readUri(Bytes& out, const std::string& uri, const std::string& dir="
   return true;
 }
 
+static std::string attributeTypeString(const AttributeType& s) {
+  if (s == AttributeType::POSITION) return "POSITION";
+  if (s == AttributeType::NORMAL) return "NORMAL";
+  if (s == AttributeType::TANGENT) return "TANGENT";
+  if (s == AttributeType::TEXCOORD_0) return "TEXCOORD_0";
+  if (s == AttributeType::TEXCOORD_1) return "TEXCOORD_1";
+  if (s == AttributeType::COLOR_0) return "COLOR_0";
+  if (s == AttributeType::JOINTS_0) return "JOINTS_0";
+  if (s == AttributeType::WEIGHTS_0) return "WEIGHTS_0";
+  if (s == AttributeType::BATCHID) return "_BATCHID";
+}
 static AttributeType parseAttributeType(const std::string& s) {
   if (s == "POSITION") return AttributeType::POSITION;
   if (s == "NORMAL") return AttributeType::NORMAL;
@@ -112,6 +123,15 @@ static AttributeType parseAttributeType(const std::string& s) {
   if (s == "WEIGHTS_0") return AttributeType::WEIGHTS_0;
   if (s == "_BATCHID") return AttributeType::BATCHID;
   ENSURE(false);
+}
+static std::string dataTypeString(const DataType& s) {
+  if (s == DataType::SCALAR) return "SCALAR";
+  if (s == DataType::VEC2) return "VEC2";
+  if (s == DataType::VEC3) return "VEC3";
+  if (s == DataType::VEC4) return "VEC4";
+  if (s == DataType::MAT2) return "MAT2";
+  if (s == DataType::MAT3) return "MAT3";
+  if (s == DataType::MAT4) return "MAT4";
 }
 static DataType parseDataType(const std::string& s) {
   if (s == "SCALAR") return DataType::SCALAR;
@@ -261,9 +281,11 @@ void GltfModel::parse(const std::string_view& jsonString) {
     // Either file uri, data uri, or link to bufferView
     Bytes data;
     if (j.contains("uri")) {
+      img.uri = j["uri"];
       ENSURE(readUri(data, j["uri"], dir));
     } else {
       int bv = j["bufferView"];
+      img.bufferView = bv;
       data = copyDataFromBufferView(bv);
     }
 
@@ -356,4 +378,146 @@ std::string GltfModel::printInfo() {
   n += sprintf(buf+n, "\t- (%d images / %d textures / %d materials / %d samplers)\n", images.size(), textures.size(), materials.size(), samplers.size());
 
   return std::string{buf, n};
+}
+
+template<class T>
+static void copy_to_string(std::string& out, const T& t) {
+  std::string s { (char*)(&t) , sizeof(T) };
+  out = out + s;
+}
+std::string GltfModel::serialize_glb() {
+  std::string out;
+  std::string chunk0;
+  std::string chunk1;
+
+  ENSURE(buffers.size() == 1);
+
+  // Strategy:
+  // Create json while creating the glb-buffer.
+  // Cannot fill out the json[buffers][0][length] until we create all buffers.
+  // (Because the length may change while creating e..g images)
+  // Cannot write header until we fill the other two.
+
+  chunk1 = std::string((const char*)buffers[0].data.data(), buffers[0].byteLength);
+
+  nlohmann::json jobj;
+  jobj["scenes"] = json::array();
+  jobj["buffers"] = json::array();
+  jobj["bufferViews"] = json::array();
+  jobj["images"] = json::array();
+  jobj["textures"] = json::array();
+  jobj["samplers"] = json::array();
+  jobj["nodes"] = json::array();
+  jobj["meshes"] = json::array();
+  jobj["accessors"] = json::array();
+  jobj["materials"] = json::array();
+  for (const auto& b : bufferViews) {
+    nlohmann::json j; j["buffer"] = b.buffer;
+    j["byteLength"] = b.byteLength;
+    j["byteOffset"] = b.byteOffset;
+    j["byteStride"] = b.byteStride;
+    j["target"] = b.target;
+    jobj["bufferViews"].push_back(j);
+  }
+  for (const auto& s : scenes) {
+    nlohmann::json j; j["name"] = s.name;
+    j["nodes"] = s.baseNodes;
+    jobj["scenes"].push_back(j);
+  }
+  for (const auto& i : images) {
+    nlohmann::json j; j["channels"] = i.channels;
+    j["width"] = i.w;
+    j["height"] = i.h;
+    if (i.uri.length()) {
+      // TODO. Must copy image data over to buffer!
+      //j["bufferView"] = ,,,;
+    } else
+      j["bufferView"] = i.bufferView;
+    jobj["images"].push_back(j);
+  }
+  for (const auto& t : textures) {
+    nlohmann::json j; j["sampler"] = t.sampler;
+    j["source"] = t.source;
+    jobj["textures"].push_back(j);
+  }
+  for (const auto& n : nodes) {
+    nlohmann::json j;
+    j["mesh"] = n.mesh;
+    j["xform"] = json::array();
+    for (int i=0; i<16; i++) j["xform"].push_back(n.xform[i]);
+    if (n.children.size()) j["children"] = n.children;
+    jobj["nodes"].push_back(j);
+  }
+  for (const auto& m : meshes) {
+    nlohmann::json j;
+    j["primitives"] = json::array();
+    for (auto p : m.primitives) {
+      nlohmann::json jj;
+      jj["indices"] = p.indices;
+      jj["material"] = p.material;
+      jj["mode"] = p.mode;
+      jj["attributes"] = json::array();
+      for (auto ap : p.attribs) {
+        auto k = attributeTypeString(ap.attrib);
+        jj["attributes"][k] = ap.id;
+      }
+    }
+    jobj["meshes"].push_back(j);
+  }
+  for (const auto& a : accessors) {
+    nlohmann::json j;
+  int bufferView;
+  int byteOffset;
+  int componentType;
+  AttributeType attributeType;
+  DataType dataType;
+  int count;
+  double max[4];
+  double min[4];
+  bool normalized = false;
+    j["bufferView"] = a.bufferView;
+    j["byteOffset"] = a.byteOffset;
+    j["componentType"] = a.componentType;
+    j["dataType"] = dataTypeString(a.dataType);
+    j["count"] = a.count;
+    j["normalized"] = a.normalized;
+    j["max"] = json::array();
+    j["min"] = json::array();
+    for (int i=0; i<a.count; i++) j["max"].push_back(a.max[i]);
+    for (int i=0; i<a.count; i++) j["min"].push_back(a.min[i]);
+    jobj["accessors"].push_back(j);
+  }
+  // TODO materials
+
+  // NOTE: Do buffer[0] last, so that length is correct.
+  for (const auto& b : buffers) {
+    // NOTE: this is the GLB buffer, has NO URI.
+    nlohmann::json j; j["length"] = chunk1.length();
+    jobj["buffers"].push_back(j);
+  }
+
+  chunk0 = jobj.dump();
+
+  while (chunk0.length() % 4 != 0) chunk0 += ' ';
+  while (chunk1.length() % 4 != 0) chunk1 += '\0';
+
+  auto chunk0_type = "JSON";
+  std::string chunk0_sz; copy_to_string(chunk0_sz, (uint32_t)chunk0.length());
+  chunk0 = chunk0_sz + chunk0_type + chunk0;
+
+  std::string chunk1_type = '\0' + "BIN";
+  std::string chunk1_sz; copy_to_string(chunk1_sz, (uint32_t)chunk1.length());
+  chunk1 = chunk1_sz + chunk1_type + chunk1;
+
+  int32_t len = 12 + chunk0.length() + chunk1.length();
+
+  out = "gltf";
+  int32_t two = 2; copy_to_string(out, two);
+  copy_to_string(out, two);
+  copy_to_string(out, len);
+
+  out = out + chunk0 + chunk1;
+
+  return out;
+
 }

@@ -59,6 +59,8 @@ struct GltfTexture {
 struct GltfImage {
   // If bufferView is -1, bytes must hold the decoded image data.
   Bytes decodedData;
+  std::string uri;
+  int bufferView=-1;
   //Bytes data;
   //int bufferView = -1;
   int channels; // 1, 3, or 4
@@ -138,6 +140,8 @@ struct GltfModel {
     std::string dir;
 
     std::string printInfo();
+
+    std::string serialize_glb();
 };
 
 
