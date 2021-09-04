@@ -202,6 +202,7 @@ void RenderContext::compileShaders() {
   LoadShaderFromString("basicTexturedWhiteFrag", GL_FRAGMENT_SHADER, basicTexturedFrag, basicTexturedFragSrc);
 
   defaultGltfShader.compile(basicTexturedVert, basicTexturedFrag);
+  basicTexturedShader.compile(basicTexturedVert, basicTexturedFrag);
 
   glDeleteShader(basicVertId); glDeleteShader(basicWhiteFragId);
   glDeleteShader(basicColorVertId); glDeleteShader(basicColorFragId);
@@ -218,4 +219,83 @@ RenderState::RenderState(RenderContext* ctx_)
 RenderState::RenderState(const RenderState& rs) {
   memcpy(mvp, rs.mvp, sizeof(rs.mvp));
   ctx = rs.ctx;
+}
+
+
+
+void RenderEngine::make(int w, int h) {
+  glGenFramebuffers(1, &fbo);
+  glGenTextures(1, &frameRgbTex);
+  glGenTextures(1, &frameDepthTex);
+  glBindTexture(GL_TEXTURE_2D, frameRgbTex);
+  CheckGLErrors("post bind frgbtex")
+  glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGB8, w, h);
+  CheckGLErrors("post texStorage rgb8")
+  glBindTexture(GL_TEXTURE_2D, frameDepthTex);
+  glTexStorage2D(GL_TEXTURE_2D, 1, GL_DEPTH_COMPONENT32, w, h);
+  CheckGLErrors("post texStorage depth32")
+  glBindTexture(GL_TEXTURE_2D, 0);
+  glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+  glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, frameRgbTex, 0);
+  CheckGLErrors("post fbo set tex color")
+  glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,  frameDepthTex, 0);
+  CheckGLErrors("post fbo set tex depth")
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  CheckGLErrors("post make fbo")
+
+  /* glBindTexture(GL_TEXTURE_2D, frameRgbTex);
+  uint8_t* d = (uint8_t*)malloc(w*h*3);
+  for (int i=0; i<w*h*3; i++) d[i] = (i*77) % 255;
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0,0, w,h, GL_RGB, GL_UNSIGNED_BYTE, d);
+  glBindTexture(GL_TEXTURE_2D, 0);
+  free(d); */
+}
+
+void RenderEngine::setTarget() {
+  glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+  CheckGLErrors("re::setTarget");
+}
+void RenderEngine::unsetTarget() {
+  CheckGLErrors("pre re::unsetTarget");
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  CheckGLErrors("post re::unsetTarget");
+}
+void RenderEngine::renderToScreen(RenderContext& rs) {
+  CheckGLErrors("pre re::renderToScreen")
+  // Render full-screen quad with the rgb tex.
+  static constexpr float quad[] = {
+    -1, -1, 0, 0,0,
+     1, -1, 0, 1,0,
+     1,  1, 0, 1,1,
+    -1,  1, 0, 0,1,
+  };
+  static constexpr float mvp[] = {
+    1,0,0,0,
+    0,1,0,0,
+    0,0,1,0,
+    0,0,0,1,
+  };
+  static constexpr uint8_t inds[] = {
+    0,1,2, 2,3,0
+  };
+
+  glClearColor(0,0,0,1);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+  auto &shader = rs.basicTexturedShader;
+  glUseProgram(shader.id);
+  glEnableVertexAttribArray(shader.in_pos);
+  glEnableVertexAttribArray(shader.in_texcoord0);
+  glEnable(GL_TEXTURE_2D);
+  glBindTexture(GL_TEXTURE_2D, frameRgbTex);
+  glUniformMatrix4fv(shader.u_mvp, 1, true, mvp);
+  glVertexAttribPointer(shader.in_pos, 3, GL_FLOAT, false, 4*5, quad);
+  glVertexAttribPointer(shader.in_texcoord0, 2, GL_FLOAT, false, 4*5, quad+3);
+  glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_BYTE, inds);
+  glDisableVertexAttribArray(shader.in_pos);
+  glDisableVertexAttribArray(shader.in_texcoord0);
+  glBindTexture(GL_TEXTURE_2D, 0);
+  glDisable(GL_TEXTURE_2D);
+  glUseProgram(0);
+  CheckGLErrors("post re::renderToScreen")
 }

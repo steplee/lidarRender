@@ -15,7 +15,8 @@ int main(int argc, char** argv) {
 
   double scale = std::atof( argv[2] );
 
-  TWindow window(900,900, false, "Test1");
+  int w=900, h=900;
+  TWindow window(w,h, false, "Test1");
   CheckGLErrors("post create window");
 
   //sleep(1);
@@ -35,6 +36,9 @@ int main(int argc, char** argv) {
   RenderContext rctx;
   rctx.compileShaders();
 
+  RenderEngine eng;
+  eng.make(w,h);
+
   GltfEntity entity;
   entity.upload(*model);
   CheckGLErrors("post upload");
@@ -44,6 +48,7 @@ int main(int argc, char** argv) {
   //glDisable(GL_CULL_FACE);
 
   for (double t=0; t<8*3.141; t += .01) {
+
     glMatrixMode(GL_MODELVIEW);
     double x = std::sin(t) * r;
     double y = std::cos(t) * r;
@@ -56,6 +61,8 @@ int main(int argc, char** argv) {
     CheckGLErrors("post get view");
 
     window.startFrame();
+
+    eng.setTarget();
     glClearColor(0,0,0,1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -73,6 +80,9 @@ int main(int argc, char** argv) {
     matmul44(rs.mvp, view, proj);
     for (int i=0; i<4; i++) for (int j=0; j<i; j++) std::swap(rs.mvp[i*4+j], rs.mvp[j*4+i]);
     entity.renderScene(rs, 0);
+
+    eng.unsetTarget();
+    eng.renderToScreen(rctx);
 
 
     window.endFrame();

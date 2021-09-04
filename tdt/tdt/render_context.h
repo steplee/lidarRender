@@ -47,6 +47,7 @@ struct RenderContext {
   Shader basicUniformColorShader = Shader("basicUniformColor");
   Shader basicWhiteShader = Shader("basicWhite");
   Shader basicColorShader = Shader("basicColor");
+  Shader basicTexturedShader = Shader("basicTextured");
 
   std::unordered_map<std::string, Shader> otherShaders;
 
@@ -70,5 +71,18 @@ struct RenderState {
   BoxEntity* boxEntity = nullptr;
 
   RenderContext* ctx;
+};
+
+// Class that helps with a render-to-texture + screen-space-effects pipeline
+struct RenderEngine {
+  uint32_t fbo;
+  uint32_t frameRgbTex;
+  uint32_t frameDepthTex;
+  int w,h;
+
+  void make(int w, int h);
+  void setTarget();
+  void unsetTarget();
+  void renderToScreen(RenderContext& rs);
 };
 
