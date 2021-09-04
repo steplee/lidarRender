@@ -46,6 +46,7 @@ struct RenderContext {
   Shader defaultGltfShader = Shader("defaultGltf");
   Shader basicUniformColorShader = Shader("basicUniformColor");
   Shader basicWhiteShader = Shader("basicWhite");
+  Shader basicColorShader = Shader("basicColor");
 
   std::unordered_map<std::string, Shader> otherShaders;
 

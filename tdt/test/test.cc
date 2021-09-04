@@ -41,6 +41,7 @@ int main(int argc, char** argv) {
 
   glEnable(GL_DEPTH_TEST);
   glEnable(GL_BLEND);
+  //glDisable(GL_CULL_FACE);
 
   for (double t=0; t<8*3.141; t += .01) {
     glMatrixMode(GL_MODELVIEW);

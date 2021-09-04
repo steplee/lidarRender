@@ -66,7 +66,7 @@ bool LinkShader(const std::string &name, GLuint &prog, GLuint &vertShader, GLuin
 
   glGetProgramiv(prog, GL_LINK_STATUS, &val);
   if (val != GL_TRUE) {
-    std::cout << " - Error compiling shader " << name << ":\n";
+    std::cout << " - Error linking shader " << name << ":\n";
     exit(1);
   }
 
@@ -135,6 +135,26 @@ void main() {
 }
 )";
 
+const std::string basicColorVertSrc = R"(
+#version 440
+in vec3 in_pos;
+in vec4 in_color;
+uniform mat4 u_mvp;
+out vec4 v_color;
+void main() {
+  gl_Position = u_mvp * vec4(in_pos,1.0);
+  v_color = in_color;
+}
+)";
+const std::string basicColorFragSrc = R"(
+#version 440
+in vec4 v_color;
+out vec4 outColor;
+void main() {
+  outColor = v_color;
+}
+)";
+
 const std::string basicTexturedVertSrc = R"(
 #version 440
 in vec3 in_pos;
@@ -160,23 +180,31 @@ void RenderContext::compileShaders() {
 
 
   CheckGLErrors("pre compile");
+
   GLuint basicVertId = 0;
   GLuint basicWhiteFragId = 0;
   GLuint basicUniformColorFragId = 0;
   LoadShaderFromString("basicVert", GL_VERTEX_SHADER, basicVertId, basicVertSrc);
   LoadShaderFromString("basicWhiteFrag", GL_FRAGMENT_SHADER, basicWhiteFragId, basicFragSrc);
   LoadShaderFromString("basicUniformColorFrag", GL_FRAGMENT_SHADER, basicUniformColorFragId, basicUniformColorFragSrc);
+  basicWhiteShader.compile(basicVertId, basicWhiteFragId);
+  basicUniformColorShader.compile(basicVertId, basicUniformColorFragId);
+
+  GLuint basicColorVertId = 0;
+  GLuint basicColorFragId = 0;
+  LoadShaderFromString("basicColorFrag", GL_FRAGMENT_SHADER, basicColorFragId, basicColorFragSrc);
+  LoadShaderFromString("basicColorVert", GL_VERTEX_SHADER, basicColorVertId, basicColorVertSrc);
+  basicColorShader.compile(basicColorVertId, basicColorFragId);
+
   GLuint basicTexturedVert = 0;
   GLuint basicTexturedFrag = 0;
   LoadShaderFromString("basicTexturedVert", GL_VERTEX_SHADER, basicTexturedVert, basicTexturedVertSrc);
   LoadShaderFromString("basicTexturedWhiteFrag", GL_FRAGMENT_SHADER, basicTexturedFrag, basicTexturedFragSrc);
 
-  basicWhiteShader.compile(basicVertId, basicWhiteFragId);
-  basicUniformColorShader.compile(basicVertId, basicUniformColorFragId);
-
   defaultGltfShader.compile(basicTexturedVert, basicTexturedFrag);
 
   glDeleteShader(basicVertId); glDeleteShader(basicWhiteFragId);
+  glDeleteShader(basicColorVertId); glDeleteShader(basicColorFragId);
   glDeleteShader(basicUniformColorFragId);
   glDeleteShader(basicTexturedVert); glDeleteShader(basicTexturedFrag);
 }

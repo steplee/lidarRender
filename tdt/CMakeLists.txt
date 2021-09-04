@@ -29,6 +29,8 @@ add_library(viewUtils
 
 add_executable(test_tdt
   test/test_tdt.cc)
+add_executable(test_gltf
+  test/test.cc)
 add_executable(printInfo
   test/print_info.cc)
 add_executable(test_serialize
@@ -38,6 +40,7 @@ add_executable(test_sight
   test/test_sight.cc)
 
 target_link_libraries(viewUtils ${GL_LIBS})
+target_link_libraries(test_gltf tdt viewUtils)
 target_link_libraries(test_tdt tdt viewUtils)
 target_link_libraries(test_serialize tdt viewUtils)
 target_link_libraries(test_sight tdt viewUtils)

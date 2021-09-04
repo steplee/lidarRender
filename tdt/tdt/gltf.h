@@ -48,8 +48,8 @@ struct GltfAccessor {
   AttributeType attributeType;
   DataType dataType;
   int count;
-  double max[4];
-  double min[4];
+  double max[4] = {0};
+  double min[4] = {0};
   bool normalized = false;
   // Note: sparse not supported.
 };

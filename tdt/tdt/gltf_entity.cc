@@ -102,6 +102,7 @@ void GltfEntity::renderNode(const GltfNode& node, const RenderState& rs0) {
     //const Shader& shader = rs0.ctx->basicShader;
 
     const GltfMesh& mesh = meshes[node.mesh];
+    std::cout << " - rendering mesh " << node.mesh << " : " << mesh.name <<  ", with " << mesh.primitives.size() << " prims" << ".\n";
 
     float mvp[16];
     for (int i=0; i<16; i++) mvp[i] = (float)rs.mvp[i];
@@ -112,7 +113,14 @@ void GltfEntity::renderNode(const GltfNode& node, const RenderState& rs0) {
 
       const Shader* shader = nullptr;
 
-      if (prim.material == -1) {
+      bool haveColorAttrib = false;
+      for (auto &ai : prim.attribs) if (ai.attrib == AttributeType::COLOR_0) haveColorAttrib = true;
+
+      if (prim.material == -1 and haveColorAttrib) {
+        shader = &rs0.ctx->basicColorShader;
+        glUseProgram(shader->id);
+      }
+      else if (prim.material == -1) {
         shader = &rs0.ctx->basicWhiteShader;
         glUseProgram(shader->id);
       } else {

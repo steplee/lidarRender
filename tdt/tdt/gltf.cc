@@ -66,6 +66,7 @@ GltfModel* GltfModel::fromGlbString(const std::string& dir, const std::string_vi
   int32_t chunk0_len  = *(const int32_t*)(str.data()+12);
   int32_t chunk0_type = *(const int32_t*)(str.data()+16);
   const char* chunk0_data = str.data() + 20;
+  std::cout << " - chunk type : " << chunk0_type << " " << 0x4E4F534A << "\n";
   ENSURE(chunk0_type == 0x4E4F534A);
   std::string jsonString(chunk0_data, chunk0_len);
 
@@ -75,6 +76,7 @@ GltfModel* GltfModel::fromGlbString(const std::string& dir, const std::string_vi
     int32_t chunk1_len  = *(const int32_t*)(str.data()+20+chunk0_len);
     int32_t chunk1_type = *(const int32_t*)(str.data()+24+chunk0_len);
     const uint8_t* chunk1_data = (const uint8_t*) str.data() + 28 + chunk0_len;
+    std::cout << " - off " << chunk0_len << " chunk type : " << chunk1_type << " " << 0x004E4942 << std::endl;
     ENSURE(chunk1_type == 0x004E4942);
 
     glbBuffer.data = Bytes(chunk1_data, chunk1_data + chunk1_len);
@@ -123,6 +125,15 @@ static AttributeType parseAttributeType(const std::string& s) {
   if (s == "WEIGHTS_0") return AttributeType::WEIGHTS_0;
   if (s == "_BATCHID") return AttributeType::BATCHID;
   ENSURE(false);
+}
+static int dataTypeCount(const DataType& s) {
+  if (s == DataType::SCALAR) return 1;
+  if (s == DataType::VEC2) return 2;
+  if (s == DataType::VEC3) return 3;
+  if (s == DataType::VEC4) return 4;
+  if (s == DataType::MAT2) return 4;
+  if (s == DataType::MAT3) return 9;
+  if (s == DataType::MAT4) return 16;
 }
 static std::string dataTypeString(const DataType& s) {
   if (s == DataType::SCALAR) return "SCALAR";
@@ -209,13 +220,14 @@ void GltfModel::parse(const std::string_view& jsonString) {
       node.xform[11] += (double)j["translation"][2];
     }
     //std::cout << " - Node Transform:\n"; printMatrix(node.xform);
-    for (const int& i: jobj["children"]) node.children.push_back(i);
+    if (j.contains("children")) for (const int& i: j["children"]) node.children.push_back(i);
     nodes.push_back(node);
+    printf(" - Parsed Node Xform:\n"); printMatrix(node.xform);
   }
 
   for (const json &j : jobj["meshes"]) {
     GltfMesh mesh;
-    mesh.name = jobj.value("name", "untitledMesh" + std::to_string(meshes.size()));
+    mesh.name = j.value("name", "untitledMesh" + std::to_string(meshes.size()));
     for (const json& jj : j["primitives"]) {
       GltfPrimitive prim;
       for (auto it = jj["attributes"].begin(); it != jj["attributes"].end(); ++it) {
@@ -415,8 +427,8 @@ std::string GltfModel::serialize_glb() {
     nlohmann::json j; j["buffer"] = b.buffer;
     j["byteLength"] = b.byteLength;
     j["byteOffset"] = b.byteOffset;
-    j["byteStride"] = b.byteStride;
-    j["target"] = b.target;
+    if (b.byteStride != 0) j["byteStride"] = b.byteStride;
+    if (b.target != 0) j["target"] = b.target;
     jobj["bufferViews"].push_back(j);
   }
   for (const auto& s : scenes) {
@@ -443,48 +455,43 @@ std::string GltfModel::serialize_glb() {
   for (const auto& n : nodes) {
     nlohmann::json j;
     j["mesh"] = n.mesh;
-    j["xform"] = json::array();
-    for (int i=0; i<16; i++) j["xform"].push_back(n.xform[i]);
+    j["matrix"] = json::array();
+    for (int i=0; i<16; i++) j["matrix"].push_back(n.xform[i]);
     if (n.children.size()) j["children"] = n.children;
     jobj["nodes"].push_back(j);
   }
   for (const auto& m : meshes) {
     nlohmann::json j;
+    j["name"] = m.name;
     j["primitives"] = json::array();
     for (auto p : m.primitives) {
       nlohmann::json jj;
       jj["indices"] = p.indices;
-      jj["material"] = p.material;
+      if (p.material != -1) jj["material"] = p.material;
       jj["mode"] = p.mode;
-      jj["attributes"] = json::array();
+      jj["attributes"] = json::object();
       for (auto ap : p.attribs) {
         auto k = attributeTypeString(ap.attrib);
         jj["attributes"][k] = ap.id;
       }
+      j["primitives"].push_back(jj);
     }
     jobj["meshes"].push_back(j);
   }
   for (const auto& a : accessors) {
     nlohmann::json j;
-  int bufferView;
-  int byteOffset;
-  int componentType;
-  AttributeType attributeType;
-  DataType dataType;
-  int count;
-  double max[4];
-  double min[4];
-  bool normalized = false;
     j["bufferView"] = a.bufferView;
     j["byteOffset"] = a.byteOffset;
     j["componentType"] = a.componentType;
-    j["dataType"] = dataTypeString(a.dataType);
+    j["type"] = dataTypeString(a.dataType);
     j["count"] = a.count;
     j["normalized"] = a.normalized;
-    j["max"] = json::array();
-    j["min"] = json::array();
-    for (int i=0; i<a.count; i++) j["max"].push_back(a.max[i]);
-    for (int i=0; i<a.count; i++) j["min"].push_back(a.min[i]);
+    if (a.max[0] != a.min[0]) {
+      j["max"] = json::array();
+      j["min"] = json::array();
+      for (int i=0; i<dataTypeCount(a.dataType); i++) j["max"].push_back(a.max[i]);
+      for (int i=0; i<dataTypeCount(a.dataType); i++) j["min"].push_back(a.min[i]);
+    }
     jobj["accessors"].push_back(j);
   }
   // TODO materials
@@ -492,9 +499,13 @@ std::string GltfModel::serialize_glb() {
   // NOTE: Do buffer[0] last, so that length is correct.
   for (const auto& b : buffers) {
     // NOTE: this is the GLB buffer, has NO URI.
-    nlohmann::json j; j["length"] = chunk1.length();
+    nlohmann::json j; j["byteLength"] = chunk1.length();
     jobj["buffers"].push_back(j);
   }
+
+  jobj["asset"] = json::object();
+  jobj["asset"]["generator"] = "https://github.com/steplee";
+  jobj["asset"]["version"] = "2.0";
 
   chunk0 = jobj.dump();
 
@@ -505,15 +516,16 @@ std::string GltfModel::serialize_glb() {
   std::string chunk0_sz; copy_to_string(chunk0_sz, (uint32_t)chunk0.length());
   chunk0 = chunk0_sz + chunk0_type + chunk0;
 
-  std::string chunk1_type = '\0' + "BIN";
+  std::string chunk1_type;
+  //chunk1_type.push_back(0); chunk1_type = chunk1_type + "BIN";
+  chunk1_type = chunk1_type + "BIN"; chunk1_type.push_back(0);
   std::string chunk1_sz; copy_to_string(chunk1_sz, (uint32_t)chunk1.length());
   chunk1 = chunk1_sz + chunk1_type + chunk1;
 
   int32_t len = 12 + chunk0.length() + chunk1.length();
 
-  out = "gltf";
+  out = "glTF";
   int32_t two = 2; copy_to_string(out, two);
-  copy_to_string(out, two);
   copy_to_string(out, len);
 
   out = out + chunk0 + chunk1;
