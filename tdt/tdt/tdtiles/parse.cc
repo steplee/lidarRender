@@ -114,8 +114,10 @@ Tile::Tile(const std::string& dir_, const std::string& fname) {
     st1.pop(); st2.pop();
 
     if (jobj.contains("transform")) {
-      //cur->transform = jobj.get<std::vector<double>>("transform");
       jobj.at("transform").get_to(cur->transform);
+      for (int i=0; i<4; i++) for (int j=0; j<i; j++) std::swap(cur->transform[i*4+j], cur->transform[j*4+i]);
+      std::cout << " - Parsed Transform:\n";
+      for (int i=0; i<cur->transform.size(); i++) std::cout << cur->transform[i] << ((i%4==3) ? "\n" : " ");
     }
 
     if (jobj.contains("boundingVolume")) {

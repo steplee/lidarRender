@@ -8,6 +8,7 @@
 #include "tdt/camera.h"
 
 #include <Eigen/Core>
+#include "tdt/math.h"
 
 ErrorComputer::ErrorComputer(const RenderState& rs) {
   w = rs.w;
@@ -126,7 +127,7 @@ void Tile::close() {
   state = State::CLOSED;
 }
 
-void Tile::render(RenderState& rs) {
+void Tile::render(RenderState& rs0) {
   // 1) If we are closed:
   //    do nothing
   // 2) If we are open, or if we are closing:
@@ -136,6 +137,10 @@ void Tile::render(RenderState& rs) {
 
   if (state == TileBase::State::CLOSED) return;
 
+  RenderState rs { rs0 };
+  if (transform.size())
+    matmul44(rs.modelView, rs0.modelView, transform.data());
+
   if (
       state == TileBase::State::OPEN ||
       state == TileBase::State::FRONTIER ||
@@ -144,9 +149,9 @@ void Tile::render(RenderState& rs) {
     if (refine == Refinement::REPLACE and anyChildOpen) {
       // do not render self.
     } else {
-      if (entity) entity->renderAllNodes(rs);
+      if (entity) entity->renderAllNodes(rs0);
     }
-    if (anyChildOpen) for (auto c : children) c->render(rs);
+    if (anyChildOpen) for (auto c : children) c->render(rs0);
   }
 
 #if 0
