@@ -21,7 +21,7 @@ enum class AttributeType {
   COLOR_0, JOINTS_0, WEIGHTS_0, BATCHID
 };
 enum class AlphaMode {
-  OPAQUE, MASK, BLEND
+  DEFAULT, OPAQUE, MASK, BLEND
 };
 
 struct GltfNode {
@@ -60,6 +60,7 @@ struct GltfImage {
   // If bufferView is -1, bytes must hold the decoded image data.
   Bytes decodedData;
   std::string uri;
+  std::string mimeType;
   int bufferView=-1;
   //Bytes data;
   //int bufferView = -1;
@@ -77,6 +78,7 @@ struct GltfTextureRef {
   inline GltfTextureRef() {};
 };
 struct GltfMaterial {
+  GltfMaterial();
   struct {
     GltfTextureRef baseColorTexture;
     GltfTextureRef metallicRoughnessTexture;
@@ -87,6 +89,7 @@ struct GltfMaterial {
   AlphaMode alphaMode;
   float alphaCutoff;
   bool doubleSided;
+  std::string name;
 };
 struct AttributeIndexPair {
   AttributeType attrib;
@@ -145,23 +148,3 @@ struct GltfModel {
 };
 
 
-// row-major
-// NOT OKAY FOR IN-PLACE OPERATION (A != C != B)
-inline void matmul44(double C[16], const double A[16], const double B[16]) {
-  for (int i=0; i<4; i++)
-  for (int j=0; j<4; j++) {
-    double sum = 0;
-    for (int k=0; k<4; k++)
-      sum += A[i*4+k] * B[k*4+j];
-    C[i*4+j] = sum;
-  }
-}
-inline void matmul44_colMajor(double C[16], const double A[16], const double B[16]) {
-  for (int i=0; i<4; i++)
-  for (int j=0; j<4; j++) {
-    double sum = 0;
-    for (int k=0; k<4; k++)
-      sum += A[k*4+i] * B[j*4+k];
-    C[i*4+j] = sum;
-  }
-}

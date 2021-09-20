@@ -4,6 +4,8 @@
 
 #include "GL/glew.h"
 
+#include "math.h"
+
 
 #define BUFFER_OFFSET(i) ((char *)NULL + (i))
 
@@ -94,7 +96,7 @@ void GltfEntity::renderScene(const RenderState& rs, int si) {
 
 void GltfEntity::renderNode(const GltfNode& node, const RenderState& rs0) {
   RenderState rs(rs0);
-  matmul44(rs.mvp, rs0.mvp, node.xform);
+  matmul44(rs.modelView, rs0.modelView, node.xform);
 
   //std::cout << " - renderNode.\n";
 
@@ -102,10 +104,11 @@ void GltfEntity::renderNode(const GltfNode& node, const RenderState& rs0) {
     //const Shader& shader = rs0.ctx->basicShader;
 
     const GltfMesh& mesh = meshes[node.mesh];
-    std::cout << " - rendering mesh " << node.mesh << " : " << mesh.name <<  ", with " << mesh.primitives.size() << " prims" << ".\n";
+    //std::cout << " - rendering mesh " << node.mesh << " : " << mesh.name <<  ", with " << mesh.primitives.size() << " prims" << ".\n";
 
     float mvp[16];
-    for (int i=0; i<16; i++) mvp[i] = (float)rs.mvp[i];
+    matmul44_double_to_float(mvp, rs.proj, rs.modelView);
+    //printf(" - MVP\n"); for (int i=0; i<16; i++) printf(" %f%s",mvp[i],i%4==3?"\n":"");
 
     for (int i=0; i<mesh.primitives.size(); i++) {
       //std::cout << " - prim " << i << "\n";
@@ -114,7 +117,12 @@ void GltfEntity::renderNode(const GltfNode& node, const RenderState& rs0) {
       const Shader* shader = nullptr;
 
       bool haveColorAttrib = false;
-      for (auto &ai : prim.attribs) if (ai.attrib == AttributeType::COLOR_0) haveColorAttrib = true;
+      bool haveNormalAttrib = false;
+
+      for (auto &ai : prim.attribs) {
+        if (ai.attrib == AttributeType::COLOR_0) haveColorAttrib = true;
+        if (ai.attrib == AttributeType::NORMAL) haveNormalAttrib = true;
+      }
 
       if (prim.material == -1 and haveColorAttrib) {
         shader = &rs0.ctx->basicColorShader;
@@ -128,9 +136,20 @@ void GltfEntity::renderNode(const GltfNode& node, const RenderState& rs0) {
         if (materials[prim.material].pbr.baseColorTexture.index == -1) {
           // If not diffuse texture, use colored shader.
           // NOTE: this is not exactly fool-proof.
-          shader = &rs0.ctx->basicUniformColorShader;
-          glUseProgram(shader->id);
-          glUniform4fv(shader->u_color, 1, materials[prim.material].pbr.baseColorFactor);
+
+          if (haveNormalAttrib) {
+            shader = &rs0.ctx->litUniformColored;
+            glUseProgram(shader->id);
+          } else {
+            shader = &rs0.ctx->basicUniformColorShader;
+            glUseProgram(shader->id);
+          }
+
+          if (shader->u_color > -1) {
+            //printf( " - u_color : %f %f %f %f\n", materials[prim.material].pbr.baseColorFactor[0], materials[prim.material].pbr.baseColorFactor[1], materials[prim.material].pbr.baseColorFactor[2], materials[prim.material].pbr.baseColorFactor[3]);
+            glUniform4fv(shader->u_color, 1, materials[prim.material].pbr.baseColorFactor);
+          }
+
         } else {
           shader = &rs0.ctx->defaultGltfShader;
           glUseProgram(shader->id);
@@ -142,7 +161,25 @@ void GltfEntity::renderNode(const GltfNode& node, const RenderState& rs0) {
 
       }
 
-      glUniformMatrix4fv(shader->u_mvp, 1, true, mvp);
+      if (shader->u_mvp > -1)
+        glUniformMatrix4fv(shader->u_mvp, 1, true, mvp);
+      if (shader->u_invModelViewT > -1) {
+        float imvt[16];
+        mat44_double_to_float_invt(imvt, rs.modelView);
+        glUniformMatrix4fv(shader->u_invModelViewT, 1, true, imvt);
+      }
+      if (shader->u_modelView > -1) {
+        float mv[16];
+        for (int i=0; i<16; i++) mv[i] = rs.modelView[i];
+        glUniformMatrix4fv(shader->u_modelView, 1, true, mv);
+      }
+      if (shader->u_view > -1) {
+        glUniformMatrix4fv(shader->u_view, 1, true, rs.viewf);
+      }
+      if (shader->u_sunPos > -1) {
+        float sunPos[3] = { .25, .25, .875 };
+        glUniform3fv(shader->u_sunPos, 1, sunPos);
+      }
 
       int count = 0; // If no indices provided, use count of position attr
       CheckGLErrors("pre set");

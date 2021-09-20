@@ -17,6 +17,9 @@ class Camera {
     Camera(const CamSpec& s);
 
     void viewProj(double out[16]);
+    void copyView(double out[16]);
+    void copyViewToFloat(float out[16]);
+    void copyProj(double out[16]);
 
     void updateCamSpec(const CamSpec& s);
     void updateNearFar(float n, float f);

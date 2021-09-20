@@ -82,7 +82,9 @@ const char* BatchTable::parse(const char* bytes, int json_len, int bin_len) {
   return bytes + json_len + bin_len;
 }
 
-TileRoot::TileRoot(const std::string& dir_, const std::string& fname) {
+#if 1
+//TileRoot::TileRoot(const std::string& dir_, const std::string& fname) {
+Tile::Tile(const std::string& dir_, const std::string& fname) {
 //TileBase* TileBase::fromFile(const std::string& fname) {
   dir = dir_;
   if (dir[dir.length()-1] != '/') dir += '/';
@@ -92,22 +94,29 @@ TileRoot::TileRoot(const std::string& dir_, const std::string& fname) {
   auto jobj1 = jobj0["root"];
 
   //TileBase* root = new TileBase();
-  TileRoot* root = this;
+  Tile* root = this;
 
   std::vector<TileBase> children;
   std::stack<json> st1;
-  std::stack<TileBase*> st2;
+  std::stack<std::pair<Tile*,TileBase*>> st2;
   st1.push(jobj1);
-  st2.push(root);
+  st2.push({0,root});
 
   double baseGeoError = jobj0["geometricError"];
   root->geoError = baseGeoError;
 
   while (not st1.empty()) {
     auto jobj = st1.top();
-    auto cur = st2.top();
+    Tile* parent; TileBase* cur;
+    parent = st2.top().first;
+    cur = st2.top().second;
+    //auto cur = st2.top();
     st1.pop(); st2.pop();
 
+    if (jobj.contains("transform")) {
+      //cur->transform = jobj.get<std::vector<double>>("transform");
+      jobj.at("transform").get_to(cur->transform);
+    }
 
     if (jobj.contains("boundingVolume")) {
       cur->bndVol = BoundingVolume::parse(jobj["boundingVolume"]);
@@ -123,13 +132,21 @@ TileRoot::TileRoot(const std::string& dir_, const std::string& fname) {
         cur_->contentUri = jobj["content"]["uri"];
       }
       std::cout << " - uri " << cur_->contentUri << "\n";
+
+      if (jobj.contains("refine")) {
+        cur_->refine = jobj["refine"] == "REPLACE" ? Refinement::REPLACE : Refinement::ADD;
+        std::cout << " - new tile has refine " << (int)cur_->refine << ", from json " << jobj["refine"] << "\n";
+      } else if (parent) {
+        cur_->refine = parent->refine;
+        std::cout << " - new tile has refine " << (int)cur_->refine << ", from parent.\n";
+      }
     }
 
     for (auto& j : jobj["children"]) {
       auto nxt = new Tile();
       cur->children.push_back(nxt);
       st1.push(j);
-      st2.push(nxt);
+      st2.push({cur_,nxt});
 
       if (not j.contains("geometricError")) nxt->geoError = cur->geoError;
     }
@@ -158,3 +175,4 @@ TileRoot::TileRoot(const std::string& dir_, const std::string& fname) {
   }
   */
 }
+#endif

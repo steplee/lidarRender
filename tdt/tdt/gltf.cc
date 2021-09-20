@@ -17,6 +17,8 @@
 
 #include "io.hpp"
 
+#include "math.h"
+
 #define ENSURE(x) assert((x));
 
 static void decodeImage(Bytes& out, int& outW, int& outH, int& outC, const Bytes& in, const std::string& type) {
@@ -152,7 +154,7 @@ static DataType parseDataType(const std::string& s) {
   if (s == "MAT2") return DataType::MAT2;
   if (s == "MAT3") return DataType::MAT3;
   if (s == "MAT4") return DataType::MAT4;
-  ENSURE(false);
+  throw std::runtime_error("could not parseDataType() " + s);
 }
 
 static void printMatrix(double a[16]) {
@@ -165,6 +167,16 @@ static void printMatrix(double a[16]) {
 }
 
 GltfModel::GltfModel(const std::string& dir_) : dir(dir_) {
+}
+
+GltfMaterial::GltfMaterial() {
+  pbr.baseColorFactor[0] = -1;
+  pbr.metallicFactor = -1;
+  pbr.roughnessFactor = -1;
+  emissiveFactor[0] = -1;
+  alphaMode = AlphaMode::DEFAULT;
+  alphaCutoff = -1;
+  doubleSided = true;
 }
 
 void GltfModel::parse(const std::string_view& jsonString) {
@@ -300,6 +312,7 @@ void GltfModel::parse(const std::string_view& jsonString) {
       img.bufferView = bv;
       data = copyDataFromBufferView(bv);
     }
+    if (j.contains("mimeType")) img.mimeType = j["mimeType"];
 
     // TODO Decode data...
     //img.channels = 3;
@@ -333,6 +346,7 @@ void GltfModel::parse(const std::string_view& jsonString) {
 
   for (const json &j : jobj["materials"]) {
     GltfMaterial m;
+    if (j.contains("name")) m.name = j["name"];
     if (j.contains("pbrMetallicRoughness")) {
       auto jj = j["pbrMetallicRoughness"];
       if (jj.contains("baseColorTexture")) m.pbr.baseColorTexture = GltfTextureRef { jj["baseColorTexture"] };
@@ -407,7 +421,7 @@ std::string GltfModel::serialize_glb() {
   // Strategy:
   // Create json while creating the glb-buffer.
   // Cannot fill out the json[buffers][0][length] until we create all buffers.
-  // (Because the length may change while creating e..g images)
+  // (Because the length may change while creating e.g. images)
   // Cannot write header until we fill the other two.
 
   chunk1 = std::string((const char*)buffers[0].data.data(), buffers[0].byteLength);
@@ -440,6 +454,7 @@ std::string GltfModel::serialize_glb() {
     nlohmann::json j; j["channels"] = i.channels;
     j["width"] = i.w;
     j["height"] = i.h;
+    if (i.mimeType.length() > 0) j["mimeType"] = i.mimeType;
     if (i.uri.length()) {
       // TODO. Must copy image data over to buffer!
       //j["bufferView"] = ,,,;
@@ -448,7 +463,8 @@ std::string GltfModel::serialize_glb() {
     jobj["images"].push_back(j);
   }
   for (const auto& t : textures) {
-    nlohmann::json j; j["sampler"] = t.sampler;
+    nlohmann::json j;
+    if (t.sampler != -1) j["sampler"] = t.sampler;
     j["source"] = t.source;
     jobj["textures"].push_back(j);
   }
@@ -494,7 +510,27 @@ std::string GltfModel::serialize_glb() {
     }
     jobj["accessors"].push_back(j);
   }
-  // TODO materials
+  for (const auto& m : materials) {
+    // TODO not complete!
+    nlohmann::json j;
+    j["pbrMetallicRoughness"] = json::object();
+    if (m.pbr.baseColorTexture.index != -1) {
+      j["pbrMetallicRoughness"]["baseColorTexture"] = json::object();
+      j["pbrMetallicRoughness"]["baseColorTexture"]["index"] = m.pbr.baseColorTexture.index;
+    }
+    if (m.pbr.baseColorFactor[0] >= 0) {
+      j["pbrMetallicRoughness"]["baseColorFactor"] = json::array();
+      for (int i=0; i<4; i++) j["pbrMetallicRoughness"].push_back(m.pbr.baseColorFactor[i]);
+    }
+    if (j["pbrMetallicRoughness"].size() == 0) j.erase("pbrMetallicRoughness");
+    if (m.emissiveFactor[0] >= 0) {
+      j["emissiveFactor"] = json::array();
+      for (int i=0; i<3; i++) j["emissiveFactor"].push_back(m.emissiveFactor[i]);
+    }
+    //if (m.alphaMode != AlphaMode::DEFAULT) j["alphaMode"] = m.
+    if (m.name.length() > 0) j["name"] = m.name;
+    jobj["materials"].push_back(j);
+  }
 
   // NOTE: Do buffer[0] last, so that length is correct.
   for (const auto& b : buffers) {
@@ -508,6 +544,8 @@ std::string GltfModel::serialize_glb() {
   jobj["asset"]["version"] = "2.0";
 
   chunk0 = jobj.dump();
+
+  std::cout << " - Serialized JSON:\n" << jobj << "\n";
 
   while (chunk0.length() % 4 != 0) chunk0 += ' ';
   while (chunk1.length() % 4 != 0) chunk1 += '\0';

@@ -77,8 +77,12 @@ int main(int argc, char** argv) {
     RenderState rs(&rctx);
     // C = A*B
     // C = (At*Bt)t
-    matmul44(rs.mvp, view, proj);
-    for (int i=0; i<4; i++) for (int j=0; j<i; j++) std::swap(rs.mvp[i*4+j], rs.mvp[j*4+i]);
+    //matmul44(rs.mvp, view, proj);
+    //for (int i=0; i<4; i++) for (int j=0; j<i; j++) std::swap(rs.mvp[i*4+j], rs.mvp[j*4+i]);
+    memcpy(rs.modelView, view, sizeof(view));
+    memcpy(rs.proj, proj, sizeof(proj));
+    for (int i=0; i<4; i++) for (int j=0; j<i; j++) std::swap(rs.modelView[i*4+j], rs.modelView[j*4+i]);
+    for (int i=0; i<4; i++) for (int j=0; j<i; j++) std::swap(rs.proj[i*4+j], rs.proj[j*4+i]);
     entity.renderScene(rs, 0);
 
     eng.unsetTarget();
@@ -86,7 +90,7 @@ int main(int argc, char** argv) {
 
 
     window.endFrame();
-    std::cout << " - render.\n";
+    //std::cout << " - render.\n";
   }
 
 

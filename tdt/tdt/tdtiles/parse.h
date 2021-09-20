@@ -52,12 +52,17 @@ struct ErrorComputer {
   float u, v; // v = 1. / tan(.5 * fovy)
 };
 
-struct TileRoot;
+//struct TileRoot;
 struct TileBase {
   BoundingVolume bndVol;
   float geoError;
   std::vector<TileBase*> children;
-  TileRoot* root = nullptr;
+  Tile* root = nullptr;
+  //TileRoot* root = nullptr;
+
+  bool isRoot = false;
+  std::string dir; // only the root stores the dir.
+  std::vector<double> transform;
 
   static TileBase* fromFile(const std::string& fname);
 
@@ -75,6 +80,8 @@ struct TileBase {
   virtual void close() =0;
   virtual void closeChildren() =0;
 };
+
+/*
 struct TileRoot : public TileBase {
   TileRoot(const std::string& dir, const std::string& fname);
   std::string dir;
@@ -85,10 +92,15 @@ struct TileRoot : public TileBase {
   virtual void close();
   virtual void closeChildren();
 };
+*/
 
 struct TileModel;
 struct Tileset : public TileBase {};
 struct Tile : public TileBase {
+
+  inline Tile() {}
+  Tile(const std::string& dir, const std::string& fname);
+
   Refinement refine;
 
   std::string contentUri;

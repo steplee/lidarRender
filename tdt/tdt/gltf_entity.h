@@ -14,8 +14,6 @@
     }
 
 
-void matmul44(double C[16], const double A[16], const double B[16]);
-void matmul44_colMajor(double C[16], const double A[16], const double B[16]);
 
 class RenderState;
 class RenderContext;

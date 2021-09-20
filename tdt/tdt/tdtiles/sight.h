@@ -23,7 +23,8 @@ class Sight {
     void updateTile(TileBase* tile, RenderState& rs);
 
   private:
-    std::vector<TileRoot*> roots;
+    //std::vector<TileRoot*> roots;
+    std::vector<Tile*> roots;
 
     //Camera cam;
 

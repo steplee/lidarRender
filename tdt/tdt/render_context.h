@@ -4,6 +4,7 @@
 #include <string>
 #include <unordered_map>
 
+
 #define CheckGLErrors(desc)                                                                    \
     {                                                                                          \
         GLenum e = glGetError();                                                               \
@@ -13,6 +14,7 @@
             exit(20);                                                                          \
         }                                                                                      \
     }
+
 
 struct Shader {
   int in_pos=-1;
@@ -26,8 +28,9 @@ struct Shader {
   int u_color=-1;
   int u_mvp=-1;
   int u_proj=-1;
+  int u_view=-1;
   int u_modelView=-1;
-  int u_invModelView=-1;
+  int u_invModelViewT=-1;
   int u_invMvp=-1;
   int u_sunPos=-1;
 
@@ -38,6 +41,8 @@ struct Shader {
   inline Shader(const std::string& name) : name(name) {};
 
   void compile(uint32_t vertexShader, uint32_t fragShader);
+  void compile(const std::string& vs, const std::string& fs);
+
   void findBindings();
 
 };
@@ -48,6 +53,9 @@ struct RenderContext {
   Shader basicWhiteShader = Shader("basicWhite");
   Shader basicColorShader = Shader("basicColor");
   Shader basicTexturedShader = Shader("basicTextured");
+
+  Shader litTextured = Shader("litTextured");
+  Shader litUniformColored = Shader("litUniformColored");
 
   std::unordered_map<std::string, Shader> otherShaders;
 
@@ -63,7 +71,9 @@ struct RenderState {
   RenderState(const RenderState& rs);
 
   // These are ROW major
-  alignas(8) double mvp[16];
+  alignas(8) float viewf[16];
+  alignas(8) double modelView[16];
+  alignas(8) double proj[16];
   int16_t w=0, h=0;
   Camera* cam = nullptr;
 

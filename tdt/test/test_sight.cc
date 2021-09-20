@@ -20,12 +20,15 @@ int main(int argc, char** argv) {
   TWindow window(w,h, false, "Test1");
 
   ControllabeCamera cam(CamSpec(45,45,1));
+  double pos[3] = {0,0,-4.};
+  cam.setPos(pos);
 
   RenderContext rctx;
   rctx.compileShaders();
 
   glEnable(GL_DEPTH_TEST);
   glEnable(GL_CULL_FACE);
+  glFrontFace(GL_CW);
 
 #if 0
   while (true) {
@@ -70,7 +73,12 @@ int main(int argc, char** argv) {
 
     cam.step(1.0 / 33.0);
     RenderState rs(&rctx);
-    cam.viewProj(rs.mvp);
+
+    //cam.viewProj(rs.mvp);
+    cam.copyView(rs.modelView);
+    cam.copyViewToFloat(rs.viewf);
+    cam.copyProj(rs.proj);
+
     rs.w = w, rs.h = h;
     //const auto spec = cam.getSpec();
     //rs.u = spec.u, rs.v = spec.v;

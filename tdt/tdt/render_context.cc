@@ -87,6 +87,16 @@ void Shader::compile(uint32_t vertexId, uint32_t fragId) {
     glUseProgram(0);
     CheckGLErrors("post find bindings");
 }
+
+void Shader::compile(const std::string& vs, const std::string& fs) {
+  GLuint vid, fid;
+  LoadShaderFromString(name + "_vs", GL_VERTEX_SHADER, vid, vs);
+  LoadShaderFromString(name + "_fs", GL_FRAGMENT_SHADER, fid, fs);
+  compile(vid, fid);
+  glDeleteShader(vid);
+  glDeleteShader(fid);
+}
+
 #define GET_UNIFORM(a) a = glGetUniformLocation(id, #a );
 #define GET_ATTRIB(a) a = glGetAttribLocation(id, #a );
 void Shader::findBindings() {
@@ -94,7 +104,7 @@ void Shader::findBindings() {
 
   GET_UNIFORM(u_mvp);
   GET_UNIFORM(u_modelView);
-  GET_UNIFORM(u_invModelView);
+  GET_UNIFORM(u_invModelViewT);
   GET_UNIFORM(u_sunPos);
   GET_UNIFORM(u_diffuseTex);
   GET_UNIFORM(u_color);
@@ -176,6 +186,83 @@ void main() {
 }
 )";
 
+#define HIGH_QUALITY
+
+#ifdef HIGH_QUALITY
+const std::string litUniformColored_VS = R"(
+#version 440
+in vec3 in_pos;
+in vec3 in_normal;
+uniform mat4 u_mvp;
+out vec3 v_normal;
+
+void main() {
+  gl_Position = u_mvp * vec4(in_pos,1.0);
+  v_normal = in_normal;
+
+}
+)";
+const std::string litUniformColored_FS = R"(
+#version 440
+in vec3 v_normal;
+
+uniform mat4 u_view;
+uniform mat4 u_invModelViewT;
+uniform vec3 u_sunPos;
+uniform vec4 u_color;
+
+void main() {
+
+  vec3 nrml = normalize(mat3(u_invModelViewT) * v_normal);
+
+  vec3 amb = .2 * u_color.rgb;
+  vec3 dif = .6 * u_color.rgb * clamp(dot(nrml, -u_sunPos), 0.,1.);
+
+  vec3 zplus = vec3(u_view[2].x, u_view[2].y, u_view[2].z);
+  //vec3 zplus = vec3(u_view[2].xyz);
+  vec3 specDir = normalize(-u_sunPos + zplus);
+  vec3 spec = .72 * vec3(1.,1.,.8) * pow(clamp(dot(nrml, specDir), 0.,1.), 15.);
+  vec4 color = clamp(vec4(dif+spec+amb, u_color.a), 0., 1.);
+
+  gl_FragColor = color;
+  }
+)";
+#else
+// Does lighting calculations in vertex shader, which is lwoer quality but easier to see LoD
+const std::string litUniformColored_VS = R"(
+#version 440
+in vec3 in_pos;
+in vec3 in_normal;
+uniform mat4 u_mvp;
+uniform mat4 u_view;
+uniform mat4 u_invModelViewT;
+uniform vec3 u_sunPos;
+uniform vec4 u_color;
+out vec4 v_color;
+
+void main() {
+  gl_Position = u_mvp * vec4(in_pos,1.0);
+
+  vec3 nrml = mat3(u_invModelViewT) * in_normal;
+  //vec3 nrml = in_normal;
+
+  vec3 amb = .2 * u_color.rgb;
+  vec3 dif = .6 * u_color.rgb * clamp(dot(nrml, -u_sunPos), 0.,1.);
+
+  vec3 specDir = normalize(-u_sunPos + (u_view)[2].xyz);
+  vec3 spec = .92 * vec3(1.,1.,.8) * pow(clamp(dot(nrml, specDir), 0.,1.), 15.);
+  v_color = clamp(vec4(dif+spec+amb, v_color.a), 0., 1.);
+}
+)";
+const std::string litUniformColored_FS = R"(
+#version 440
+in vec4 v_color;
+void main() {
+  gl_FragColor = v_color;
+  }
+)";
+#endif
+
 void RenderContext::compileShaders() {
 
 
@@ -204,6 +291,8 @@ void RenderContext::compileShaders() {
   defaultGltfShader.compile(basicTexturedVert, basicTexturedFrag);
   basicTexturedShader.compile(basicTexturedVert, basicTexturedFrag);
 
+  litUniformColored.compile(litUniformColored_VS, litUniformColored_FS);
+
   glDeleteShader(basicVertId); glDeleteShader(basicWhiteFragId);
   glDeleteShader(basicColorVertId); glDeleteShader(basicColorFragId);
   glDeleteShader(basicUniformColorFragId);
@@ -213,11 +302,15 @@ void RenderContext::compileShaders() {
 RenderState::RenderState(RenderContext* ctx_)
   : ctx(ctx_)
 {
-  for (int i=0; i<16; i++) mvp[i] = i/4 == i%4;
+  for (int i=0; i<16; i++) modelView[i] = i/4 == i%4;
+  for (int i=0; i<16; i++) proj[i] = i/4 == i%4;
 }
 
 RenderState::RenderState(const RenderState& rs) {
-  memcpy(mvp, rs.mvp, sizeof(rs.mvp));
+  //memcpy(mvp, rs.mvp, sizeof(rs.mvp));
+  memcpy(modelView, rs.modelView, sizeof(rs.modelView));
+  memcpy(proj, rs.proj, sizeof(rs.proj));
+  memcpy(viewf, rs.viewf, sizeof(rs.viewf));
   ctx = rs.ctx;
 }
 

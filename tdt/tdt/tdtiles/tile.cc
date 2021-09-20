@@ -13,13 +13,15 @@ ErrorComputer::ErrorComputer(const RenderState& rs) {
   w = rs.w;
   h = rs.h;
   Eigen::Map<Eigen::Matrix<double,4,4,Eigen::RowMajor>> SMVP(screen_mvp);
-  Eigen::Map<const Eigen::Matrix<double,4,4,Eigen::RowMajor>> MVP(rs.mvp);
+  Eigen::Map<const Eigen::Matrix<double,4,4,Eigen::RowMajor>> MV(rs.modelView);
+  Eigen::Map<const Eigen::Matrix<double,4,4,Eigen::RowMajor>> P(rs.proj);
   Eigen::Matrix<double,4,4,Eigen::RowMajor> S; S <<
     rs.w / 2., 0, 0, rs.w / 2.,
     0, rs.h / 2., 0, rs.h / 2.,
     0, 0, 1, 0,
     0, 0, 0, 1;
-  SMVP = S * MVP;
+  //SMVP = S * MVP;
+  SMVP = S * P * MV;
 
   rs.cam->getPos(eye);
   u = rs.cam->getU();
@@ -37,6 +39,7 @@ float TileBase::computeScreenArea(const ErrorComputer& ec) const {
   return 9999;
 }
 
+/*
 void TileRoot::open() {
   state = TileBase::State::FRONTIER;
 }
@@ -61,6 +64,7 @@ void TileRoot::closeChildren() {
   }
   state = TileBase::State::FRONTIER;
 }
+*/
 
 void Tile::upload() {
   assert(model != nullptr);
@@ -77,12 +81,22 @@ void Tile::unload() {
 }
 void Tile::openChildren() {
   state = State::OPEN;
+  anyChildOpen = true;
+  for (auto c : children) {
+    assert(c->state == State::CLOSED);
+    c->open();
+  }
 }
 void Tile::open() {
   //if (not loaded) {
     //loader->enqueue_load(this);
     //state = State::OPENING;
   //}
+
+  if (isRoot) {
+    state = TileBase::State::FRONTIER;
+    return;
+  }
 
   if (contentUri.length()) {
     Bytes bytes;
@@ -102,6 +116,7 @@ void Tile::closeChildren() {
     c->close();
   }
   state = TileBase::State::FRONTIER;
+  anyChildOpen = false;
 }
 void Tile::close() {
   if (loaded) {
@@ -148,9 +163,11 @@ void Tile::render(RenderState& rs) {
   }
 #endif
 }
+/*
 void TileRoot::render(RenderState& rs) {
   for (auto& c : children) c->render(rs);
 }
+*/
 
 float BoundingVolume::distance(const ErrorComputer& ec) const {
   Eigen::Vector3d t { ec.eye[0], ec.eye[1], ec.eye[2] };

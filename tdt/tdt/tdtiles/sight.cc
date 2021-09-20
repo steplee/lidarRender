@@ -10,7 +10,8 @@ Sight::Sight()
 }
 
 void Sight::addTileset(const std::string& dir, const std::string& filepath) {
-  auto root = new TileRoot(dir, filepath);
+  //auto root = new TileRoot(dir, filepath);
+  auto root = new Tile(dir, filepath);
   root->root = root;
   roots.push_back(root);
 }
@@ -24,9 +25,9 @@ void Sight::render(RenderState& rs) {
 }
 
 void Sight::update(RenderState& rs) {
-  std::cout << " update.\n";
+  //std::cout << " update.\n";
   for (auto root : roots) {
-    std::cout << " update1.\n";
+    //std::cout << " update1.\n";
     updateTile(root, rs);
   }
 }
@@ -49,7 +50,7 @@ void Sight::updateTile(TileBase* tile, RenderState& rs) {
 
   ErrorComputer ec(rs);
 
-  float tol = 512;
+  float tol = 10;
 
   if (tile->state == TileBase::State::CLOSED) {
     // only a root may open itself.
@@ -64,12 +65,17 @@ void Sight::updateTile(TileBase* tile, RenderState& rs) {
   } else if (tile->state == TileBase::State::OPEN) {
     // See if we should close all children.
     auto sse = tile->computeSSE(ec);
-    if (sse < tol) tile->closeChildren();
-    else for (auto& c : tile->children) updateTile(c,rs);
+    if (sse < tol) {
+      std::cout << " - opened tile closing all children." << std::endl;
+      tile->closeChildren();
+    } else for (auto& c : tile->children) updateTile(c,rs);
   } else if (tile->state == TileBase::State::FRONTIER) {
     // See if we should open all children.
     auto sse = tile->computeSSE(ec);
-    if (sse >= tol) tile->openChildren();
+    if (sse >= tol) {
+      std::cout << " - frontier tile opening all children." << std::endl;
+      tile->openChildren();
+    }
   }
 
 

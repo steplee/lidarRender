@@ -4,6 +4,7 @@
 #include <GL/glew.h>
 #include <math.h>
 #include <iostream>
+#include "math.h"
 
 void SphereEntity::init() {
   glGenBuffers(1, &vbo);
@@ -65,11 +66,7 @@ void SphereEntity::render(RenderState& rs) {
   model[3] = pos[0]; model[7] = pos[1]; model[11] = pos[2];
 
   float mvp[16];
-  for (int i=0; i<4; i++) for (int j=0; j<4; j++) {
-    double sum = 0;
-    for (int k=0; k<4; k++) sum += rs.mvp[i*4+k] * model[k*4+j];
-    mvp[i*4+j] = sum;
-  }
+  matmul44_double_to_float(mvp, rs.proj, rs.modelView);
 
   glUniformMatrix4fv(shader->u_mvp, 1, true, mvp);
   CheckGLErrors("post sphere mvp bind");
@@ -151,7 +148,8 @@ void BoxEntity::render(RenderState& rs) {
   CheckGLErrors("post box use prog");
 
   float mvp[16];
-  for (int i=0; i<16; i++) mvp[i] = rs.mvp[i];
+  matmul44_double_to_float(mvp, rs.proj, rs.modelView);
+
   glUniformMatrix4fv(shader->u_mvp, 1, true, mvp);
   CheckGLErrors("post box mvp bind");
 

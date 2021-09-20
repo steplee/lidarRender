@@ -88,3 +88,13 @@ bool Camera::isSame(const Camera& other) {
   for (int i=0; i<16; i++) if (other.proj[i] != view[i]) return false;
   return true;
 }
+
+void Camera::copyView(double out[16]) {
+  memcpy(out, view, sizeof(double)*16);
+}
+void Camera::copyViewToFloat(float out[16]) {
+  for (int i=0; i<16; i++) out[i] = (float) view[i];
+}
+void Camera::copyProj(double out[16]) {
+  memcpy(out, proj, sizeof(double)*16);
+}
