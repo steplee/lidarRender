@@ -43,7 +43,7 @@ add_library(cumeshing
   src/las/las_tiling.cc
   src/las/read_las.cc
 
-  src/geodset.cc
+  src/geo/geodset.cc
 
   src/viz/indexed_mesh.cc
   src/viz/window.cc

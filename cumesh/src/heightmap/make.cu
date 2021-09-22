@@ -503,6 +503,7 @@ void HeightMapRasterizer::run(const std::vector<LasPoint>& pts0) {
   // Just look for very low density regions at some depth lower than the maximum.
   // If a cell is disconnected, delete it and all of it's children.
   float* dev_pts2 = 0; cudaMalloc(&dev_pts2, sizeof(float)*3*N1);
+  printf(" - [HeightMapRasterizer] calling filter_outliers().\n");
   int N2 = filter_outliers((float3*)dev_pts2, (float3*)dev_pts1, N1, 7, tree);
   printf(" - Have %d / %d inlying.\n", N2, N1);
   inlyingPoints.resize(3*N2);
@@ -516,9 +517,11 @@ void HeightMapRasterizer::run(const std::vector<LasPoint>& pts0) {
   // Create raw heightmap
   CuImage<float2> map; // first channel is value, second is weight
   CuImage<float> finalMap;
-  int mapRes = 2048;
+  //int mapRes = 2048;
+  int mapRes = 1024;
   map.allocate(mapRes,mapRes,1);
   finalMap.allocate(mapRes,mapRes,1);
+  printf(" - [HeightMapRasterizer] calling orthographically_rasterize().\n");
   orthographically_rasterize(map, dev_pts2, N2);
   printf(" - [hmr] done rasterizing.\n");
 
@@ -537,6 +540,7 @@ void HeightMapRasterizer::run(const std::vector<LasPoint>& pts0) {
   cudaDeviceSynchronize(); getLastCudaError("post push pull filter");
 
   // Build initial surface
+  printf(" - [HeightMapRasterizer] calling build_initial_surface().\n");
   int4* verts;
   int ns = build_initial_surface(verts, finalMap);
 
@@ -560,6 +564,7 @@ void HeightMapRasterizer::run(const std::vector<LasPoint>& pts0) {
   GpuBuffer<int4> quads;
   GpuBuffer<int> vert2tris;
   int G = mapRes;
+  printf(" - [HeightMapRasterizer] calling makeGeo().\n");
   makeGeo(meshVerts, meshTris, tris, quads, vert2tris, verts, ns, G);
 
   // Fin
