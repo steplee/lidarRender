@@ -518,7 +518,8 @@ void HeightMapRasterizer::run(const std::vector<LasPoint>& pts0) {
   CuImage<float2> map; // first channel is value, second is weight
   CuImage<float> finalMap;
   //int mapRes = 2048;
-  int mapRes = 1024;
+  int mapRes = 1024+512;
+  //int mapRes = 1024;
   map.allocate(mapRes,mapRes,1);
   finalMap.allocate(mapRes,mapRes,1);
   printf(" - [HeightMapRasterizer] calling orthographically_rasterize().\n");
@@ -560,12 +561,13 @@ void HeightMapRasterizer::run(const std::vector<LasPoint>& pts0) {
 #endif
 
   // Build quads
-  GpuBuffer<int3> tris;
+  GpuBuffer<float> gpuVerts;
+  GpuBuffer<int32_t> tris;
   GpuBuffer<int4> quads;
   GpuBuffer<int> vert2tris;
   int G = mapRes;
   printf(" - [HeightMapRasterizer] calling makeGeo().\n");
-  makeGeo(meshVerts, meshTris, tris, quads, vert2tris, verts, ns, G);
+  makeGeo(meshVerts, meshTris, gpuVerts, tris, quads, vert2tris, verts, ns, G);
 
   // Fin
   cudaFree(verts);

@@ -186,7 +186,7 @@ void main() {
 }
 )";
 
-#define HIGH_QUALITY
+//#define HIGH_QUALITY
 
 #ifdef HIGH_QUALITY
 const std::string litUniformColored_VS = R"(
@@ -243,7 +243,7 @@ out vec4 v_color;
 void main() {
   gl_Position = u_mvp * vec4(in_pos,1.0);
 
-  vec3 nrml = mat3(u_invModelViewT) * in_normal;
+  vec3 nrml = normalize(mat3(u_invModelViewT) * in_normal);
   //vec3 nrml = in_normal;
 
   vec3 amb = .2 * u_color.rgb;

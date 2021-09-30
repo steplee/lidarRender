@@ -33,4 +33,12 @@ inline void matmul44_double_to_float(float C[16], const double A[16], const doub
   }
 }
 
+inline void matvec43(double c[3], const double A[16], const double b[3]) {
+  for (int i=0; i<3; i++) {
+    c[i] = A[i*4+3];
+    for (int k=0; k<4; k++)
+      c[i] += A[i*4+k] * b[k];
+  }
+}
+
 void mat44_double_to_float_invt(float C[16], const double A[16]);

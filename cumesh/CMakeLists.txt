@@ -54,6 +54,7 @@ add_library(cumeshing
   src/heightmap/make.cu
   src/heightmap/make_geo.cu
   src/heightmap/marching_cubes.cu
+  src/heightmap/surface_net.cu
 
   src/align/align.cu
   src/align/corr.cu

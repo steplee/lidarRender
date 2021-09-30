@@ -20,7 +20,9 @@ int main(int argc, char** argv) {
   TWindow window(w,h, false, "Test1");
 
   ControllabeCamera cam(CamSpec(45,45,1));
-  double pos[3] = {0,0,-4.};
+  //double pos[3] = {0,0,-4.};
+  //double pos[3] = {1.21511e6, -4.73668e6 + 0, 4.0819e6 + 100};
+  double pos[3] = {1207,-472, 500};
   cam.setPos(pos);
 
   RenderContext rctx;

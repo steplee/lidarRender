@@ -31,7 +31,7 @@ struct BoundingVolume {
     double wsenhh[6];
   } data;
 
-  static BoundingVolume parse(const nlohmann::json& j);
+  static BoundingVolume parse(const nlohmann::json& j, const double xform[16]);
 
   float distance(const ErrorComputer& rs) const;
 };

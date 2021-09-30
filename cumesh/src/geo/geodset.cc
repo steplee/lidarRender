@@ -178,9 +178,16 @@ bool SimpleGeoDataset::bboxNative(Vector4d& bboxNative, int outw, int outh, cv::
     // normal case: query box strictly lies inside
     //auto good = myRasterIO(xoff,yoff,xsize,ysize, out.data, outw,outh);
     //return good == true;
+
+    GDALRasterIOExtraArg arg;
+    arg.nVersion = RASTERIO_EXTRA_ARG_CURRENT_VERSION;
+    arg.eResampleAlg = GRIORA_Bilinear;
+    arg.pfnProgress = 0;
+    arg.pProgressData = 0;
+    arg.bFloatingPointWindowValidity = 0;
     auto err = dset->RasterIO(GF_Read, xoff, yoff, xsize, ysize, out.data, outw,outh,
         gdalType, nbands,nullptr,
-        eleSize*nbands,eleSize*nbands*outw,eleSize, nullptr);
+        eleSize*nbands,eleSize*nbands*outw,eleSize, &arg);
     return err == CE_None;
   } else if (xoff+xsize >= 0 and xoff <= fullWidth and yoff+ysize >= 0 and yoff <= fullHeight) {
     // case where there is partial overlap

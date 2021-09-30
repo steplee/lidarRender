@@ -11,8 +11,8 @@ CamSpec::CamSpec(float hfov, float vfov, float aspect) {
   this->aspect = aspect;
   u = 1 / std::tan(hfov * .5 * M_PI / 180.);
   v = 1 / std::tan(vfov * .5 * M_PI / 180.);
-  near = .2;
-  far = 500;
+  near = .5;
+  far = 5000;
 }
 
 void CamSpec::proj(double out[16]) {

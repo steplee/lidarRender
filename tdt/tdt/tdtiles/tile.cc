@@ -149,9 +149,9 @@ void Tile::render(RenderState& rs0) {
     if (refine == Refinement::REPLACE and anyChildOpen) {
       // do not render self.
     } else {
-      if (entity) entity->renderAllNodes(rs0);
+      if (entity) entity->renderAllNodes(rs);
     }
-    if (anyChildOpen) for (auto c : children) c->render(rs0);
+    if (anyChildOpen) for (auto c : children) c->render(rs);
   }
 
 #if 0
@@ -181,7 +181,13 @@ float BoundingVolume::distance(const ErrorComputer& ec) const {
     Eigen::Vector3d c { data.sphere[0], data.sphere[1], data.sphere[2] };
     return (t - c).norm();
   } else if (type == Type::BBOX) {
-    Eigen::Vector3d c { data.box[0], data.box[1], data.box[2] };
+    Eigen::Vector3d c0 { data.box[0*3+0], data.box[0*3+1], data.box[0*3+2] };
+    Eigen::Vector3d c1 { data.box[1*3+0], data.box[1*3+1], data.box[1*3+2] };
+    Eigen::Vector3d c2 { data.box[2*3+0], data.box[2*3+1], data.box[2*3+2] };
+    Eigen::Vector3d c3 { data.box[3*3+0], data.box[3*3+1], data.box[3*3+2] };
+    auto c = (c0+c1+c2+c3)/4.;
+    I guess you must also multiply geometricError by Xform scale...
+    //Eigen::Vector3d c { data.box[0], data.box[1], data.box[2] };
     return (t - c).norm();
   } else {
     // TODO must do geodetic -> ecef

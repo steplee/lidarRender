@@ -54,7 +54,8 @@ void makeGeo(
     std::vector<float>& verts,
     std::vector<int>& tris,
     //GpuBuffer<int4>& outVerts,
-    GpuBuffer<int3>& outTris,
+    GpuBuffer<float>& outVerts,
+    GpuBuffer<int32_t>& outTris,
     GpuBuffer<int4>& outQuads,
     GpuBuffer<int>& outVert2tris,
     const int4* nodesGpu,
@@ -167,10 +168,16 @@ void makeGeo(
   return out;
   */
   //outVerts.allocate(verts.size() / 3);
-  outTris.allocate(tris.size() / 3);
+  outVerts.allocate(verts.size());
+  outTris.allocate(tris.size());
   outQuads.allocate(quads.size() / 4);
   outVert2tris.allocate(vert2tris.size());
-  cudaMemcpy(outTris.buf, tris.data(), sizeof(int32_t) * tris.size() / 3, cudaMemcpyHostToDevice);
+  cudaMemcpy(outVerts.buf, verts.data(), sizeof(float) * verts.size(), cudaMemcpyHostToDevice);
+  cudaMemcpy(outTris.buf, tris.data(), sizeof(int32_t) * tris.size(), cudaMemcpyHostToDevice);
   cudaMemcpy(outQuads.buf, quads.data(), sizeof(int32_t) * quads.size() / 4, cudaMemcpyHostToDevice);
   cudaMemcpy(outVert2tris.buf, vert2tris.data(), sizeof(int32_t) * vert2tris.size(), cudaMemcpyHostToDevice);
+
+
+  optimizeSurfaceNet_1_cuda(outVerts, outVert2tris, outTris);
+  cudaMemcpy(verts.data(), outVerts.buf, sizeof(float) * verts.size(), cudaMemcpyDeviceToHost);
 }
